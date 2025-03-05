@@ -2,3 +2,7 @@ venv/
 videos/
 test codes/
 output.mp4
+__pycache__/
+test.py
+backend/__pycache__/
+
