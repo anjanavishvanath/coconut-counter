@@ -6,9 +6,11 @@ A computer vision-based project that counts coconuts moving on a conveyor using 
 ✅ Detects coconuts in a specific region of interest (ROI)  
 ✅ Counts coconuts crossing a trigger line  
 ✅ Uses color thresholding and contour detection  
-✅ React Front end to start and stop processing
-✅ Display a live video stream from the backend.
-✅ Fetch and display the real-time count of detected coconuts.
+✅ React Front end to start and stop processing\
+✅ Display a live video stream from the backend.\
+✅ Fetch and display the real-time count of detected coconuts.\
+✅ Sort coconuts into buckets.\
+✅ Can change the bucket kimit
 
 ## 📂 Project Structure
 ```
@@ -66,9 +68,9 @@ root/
    npm start
    ```
 ## 🌟 Future Improvements
-- Organize detected coconut counts into buckets based on predefined thresholds.
-- Allow users to change the thresholds for buckets
 - Add database storage for historical coconut counts.
+- Enable output for bucket change initiation
+- Figure out a way to accout to retain count in power outages or system faliure
 
 ## 💂️ Usage
 Modify the `vid_path` variable inside `backend/coconut_counter.py` to use your own video.

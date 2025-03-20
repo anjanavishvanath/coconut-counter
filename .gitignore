@@ -5,4 +5,5 @@ output.mp4
 __pycache__/
 test.py
 backend/__pycache__/
+src/temp - App.txt
 
