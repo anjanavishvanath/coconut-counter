@@ -12,7 +12,7 @@ def run_coconut_counter_stream(video_path="../videos/vid4.mp4"):
     processing = True  # ensure processing flag is True on start
 
     # --- Setup Video Capture ---
-    cap = cv2.VideoCapture(video_path)
+    cap = cv2.VideoCapture(0) #replace with video_path to use a video file
     if not cap.isOpened():
         print("Error: Could not open video.")
         return
@@ -118,7 +118,7 @@ def run_coconut_counter_stream(video_path="../videos/vid4.mp4"):
             if not data["counted"] and actual_prev_cx <= trigger_line_x and actual_cx > trigger_line_x:
                 current_count += 1
                 data["counted"] = True
-                print(f"Object {object_id} crossed the trigger line. Total count: {current_count}")
+                # print(f"Object {object_id} crossed the trigger line. Total count: {current_count}")
 
             cv2.circle(roi, (cx, cy), 4, (0, 0, 255), -1)
             cv2.putText(roi, str(object_id), (cx - 10, cy - 10),

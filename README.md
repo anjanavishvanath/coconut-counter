@@ -10,25 +10,27 @@ A computer vision-based project that counts coconuts moving on a conveyor using 
 ✅ Display a live video stream from the backend.\
 ✅ Fetch and display the real-time count of detected coconuts.\
 ✅ Sort coconuts into buckets.\
-✅ Can change the bucket kimit
+✅ Can change the bucket limit \
+✅ stop conveyor after a bucket is filled \
+✅ restart the conveyor with a button press
 
 ## 📂 Project Structure
 ```
 root/
-├── backend/                # Flask application for processing
-│   ├── app.py             # Main backend server
-│   ├── video_processing.py # Video processing logic
-│   ├── static/            # Static assets (if needed)
-│   └── templates/         # HTML templates (if needed)
+├── backend/                  # Flask application for processing
+│   ├── app.py                # Main backend server
+│   ├── video_processing.py   # Video processing logic
+│   ├── static/               # Static assets (if needed)
+│   └── templates/            # HTML templates (if needed)
 │
-├── frontend/              # React application for UI
+├── frontend/                 # React application for UI
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── Bucket.jsx # Bucket component
-│   │   ├── App.jsx       # Main React component
-│   │   ├── index.js      # Entry point
-│   ├── .gitignore        # React-specific ignored files
-│   └── package.json      # React dependencies
+│   │   ├── App.jsx        # Main React component
+│   │   ├── index.js       # Entry point
+│   ├── .gitignore         # React-specific ignored files
+│   └── package.json       # React dependencies
 │
 ├── .gitignore             # Global ignored files (integrated from frontend and backend)
 ├── README.md              # Project documentation

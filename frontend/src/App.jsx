@@ -7,8 +7,8 @@ export default function App() {
     const [totalCount, setTotalCount] = useState(0);
     const [activeBucket, setActiveBucket] = useState(0);
     const [filledBucketsCount, setFilledBucketsCount] = useState(0);
-    const [buckets, setBuckets] = useState(Array.from({ length: 17 }, (_, i) => (
-        { id: i + 1, count: 0, set_value: 500 })))
+    const [buckets, setBuckets] = useState(Array.from({ length: 14 }, (_, i) => (
+        { id: i + 1, count: 0, set_value: 5 })))
 
     //start and stop the stream. Attached to the button
     const toggleCounting = async () => {
@@ -68,8 +68,7 @@ export default function App() {
                         const updated = prevBuckets.map((bucket, index) => {
                             //only modify the active bucket
                             if (index === activeBucket) {
-                                let newCount = currentTotal - filledBucketsCount
-                                console.log(newCount)
+                                let newCount = currentTotal - filledBucketsCount //calculate the count of the active bucket
                                 //check if the newCount reached the set value of the bucket
                                 if (newCount >= bucket.set_value) {
                                     newActiveBucket = activeBucket < prevBuckets.length - 1 ? activeBucket + 1 : 0 //switch to the next bucket or the first bucket
@@ -82,18 +81,24 @@ export default function App() {
                         //check if all buckets are filled: completion condition
                         const allFilled = updated.every(bucket => bucket.count >= bucket.set_value)
                         if (allFilled) {
-                            setStreamStarted(false)
+                            setStreamStarted(false) //all buckets are filled. Stop the stream
                         } else if (newActiveBucket !== activeBucket) {
-                            setActiveBucket(newActiveBucket)
+                            setActiveBucket(newActiveBucket) //update the active bucket
+                            console.log("Switching to bucket", newActiveBucket + 1)
+                            //stop the conveyor belt and update the filled buckets count
+                            fetch("http://localhost:5000/stop_conveyor", {
+                                method: "POST",
+                            }).catch(error => console.error("Error stopping conveyor:", error))
+
                             setFilledBucketsCount(prevVal => {
                                 let currentTotal = 0
                                 for (let i = 0; i < newActiveBucket; i++) {
                                     currentTotal += prevBuckets[i].set_value
                                 }
-                                return currentTotal
+                                return currentTotal //All the coconuts counted so far in filled buckets
                             })
                         }
-                        return updated
+                        return updated //return the updated bucket array to buckets state
                     })
 
                 } catch (error) {
