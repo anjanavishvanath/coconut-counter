@@ -1,7 +1,7 @@
 from flask import Flask, Response, jsonify
 from flask_cors import CORS
 from coconut_counter import run_coconut_counter_stream, processing
-# import RPi.GPIO as GPIO
+import lgpio
 import threading
 
 
@@ -12,9 +12,9 @@ CORS(app)
 STOP_CONVEYOR_PIN = 17
 RESUME_CONVEYOR_PIN = 27
 
-# GPIO.setmode(GPIO.BOARD)
-# GPIO.setup(STOP_CONVEYOR_PIN, GPIO.OUT)
-# GPIO.setup(RESUME_CONVEYOR_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+# gpio_handle = lgpio.gpiochip_open(0)
+# lgpio.gpio_claim_output(gpio_handle, STOP_CONVEYOR_PIN)
+# lgpio.gpio_claim_input(gpio_handle, RESUME_CONVEYOR_PIN)
 
 @app.route('/video_feed')
 def video_feed():
@@ -36,19 +36,19 @@ def get_current_count():
 @app.route('/stop_conveyor', methods=['POST'])
 def stop_conveyor():
     print("Conveyor stopped.")
-    # GPIO.output(STOP_CONVEYOR_PIN, GPIO.HIGH) #send stop signal
+    #lgpio.gpio_write(gpio_handle, STOP_CONVEYOR_PIN, 1) # send stop signal
     return jsonify({"message": "Conveyor stopped."})
 
 @app.route('/resume_conveyor', methods=['POST'])
 def resume_conveyor():
-    # GPIO.output(STOP_CONVEYOR_PIN, GPIO.LOW) #send resume signal
+    #lgpio.gpio_write(gpio_handle, STOP_CONVEYOR_PIN, 0) # send resume signal
     return jsonify({"message": "Conveyor resumed."})
 
 #Automatically resume when an external signal is received
 def monitor_resume_signal():
     while True:
-        # if GPIO.input(RESUME_CONVEYOR_PIN) == GPIO.LOW: #assume low signal means resume
-        #     GPIO.output(STOP_CONVEYOR_PIN, GPIO.LOW) #resume conveyor
+        # if lgpio.gpio_read(gpio_handle, RESUME_CONVEYOR_PIN) == 0: #assume low signal means resume
+        #     lgpio.gpio_write(gpio_handle, STOP_CONVEYOR_PIN, 0) #resume conveyor
         print("Conveyor resumed.")
         break
 
