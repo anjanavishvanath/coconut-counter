@@ -12,7 +12,7 @@ def run_coconut_counter_stream(video_path="../videos/vid4.mp4"):
     processing = True  # ensure processing flag is True on start
 
     # --- Setup Video Capture ---
-    cap = cv2.VideoCapture(0) #replace with video_path to use a video file
+    cap = cv2.VideoCapture(video_path) #replace with 0 to use the camera
     if not cap.isOpened():
         print("Error: Could not open video.")
         return

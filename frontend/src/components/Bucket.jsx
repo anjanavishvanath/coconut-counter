@@ -1,8 +1,8 @@
 import React, {useState, useEffect} from 'react';
 
-export default function Bucket({children }) {
+export default function Bucket({children, isFilled, isActive }) {
 
     return (
-        <h2 className='bucket button'>{children }</h2>
+        <div className={`bucket button ${isFilled} ${isActive}`}>{children }</div>
     )
 }

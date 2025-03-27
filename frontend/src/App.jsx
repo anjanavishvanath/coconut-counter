@@ -30,13 +30,14 @@ export default function App() {
     // Convert the state to Bucket components
     const bucketElements = buckets.map(bucket => {
         return (
-            <Bucket key={bucket.id}>
+            <Bucket key={bucket.id} isFilled={bucket.count >= bucket.set_value ? "filled": ""} isActive={bucket.id === activeBucket+1 ? "active" : ""}>
                 <div>Bucket No: {bucket.id}</div>
                 <div>Set Value: <input
                     value={bucket.set_value !== undefined ? bucket.set_value : "0"}
                     type='number'
                     name="set_value"
-                    onChange={(e) => handlePresetValueChange(e, bucket.id)} /></div>
+                    onChange={(e) => handlePresetValueChange(e, bucket.id)} 
+                    disabled={bucket.count >= bucket.set_value}/></div>
                 <div>Count: {bucket.count}</div>
             </Bucket>
         )

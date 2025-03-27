@@ -1,7 +1,7 @@
 from flask import Flask, Response, jsonify
 from flask_cors import CORS
 from coconut_counter import run_coconut_counter_stream, processing
-import lgpio
+# import lgpio
 import threading
 
 

@@ -72,3 +72,13 @@ h1{
 .bucket:hover{
   background: #6b6b6b;
 }
+
+.filled{
+  background: #00FA9A;
+  color: #000;
+}
+
+.active{
+  background: #FF6347;
+  color: #000;
+}
