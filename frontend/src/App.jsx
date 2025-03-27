@@ -43,14 +43,17 @@ export default function App() {
     const bucketElements = buckets.map(bucket => {
         return (
             <Bucket key={bucket.id} isFilled={bucket.count >= bucket.set_value ? "filled": ""} isActive={bucket.id === activeBucket+1 ? "active" : ""}>
-                <div>Bucket No: {bucket.id}</div>
-                <div>Set Value: <input
+                <div>
+                    <div>Bucket No: {bucket.id}</div>
+                    <span>{bucket.count}</span>
+                    <span>/<input
                     value={bucket.set_value !== undefined ? bucket.set_value : "0"}
                     type='number'
+                    inputMode="numeric"
                     name="set_value"
                     onChange={(e) => handlePresetValueChange(e, bucket.id)} 
-                    disabled={bucket.count >= bucket.set_value}/></div>
-                <div>Count: {bucket.count}</div>
+                    disabled={bucket.count >= bucket.set_value}/></span>
+                </div>
             </Bucket>
         )
     })
@@ -135,26 +138,27 @@ export default function App() {
                     <button onClick={resetCount} className='poppins-regular button reset'>Reset Count</button>  
                 </nav>
             </header>
+            <div className='main-container'>
+                {streamStarted && (
+                    <div className='video-feed-container'>
+                        <div className='video-feed-overlay'>
+                            <img
+                                id="video-feed"
+                                src="http://localhost:5000/video_feed"
+                                alt="Video Stream"
+                                style={{ width: '320px', height: '240px', border: '1px solid #ccc' }}
+                            />
+                        </div>
+                        <div className='poppins-regular'>
+                            <h2>Total Coconuts: {totalCount}</h2>
+                            <h3>Active Bucket: {buckets[activeBucket + 1] && buckets[activeBucket].id}</h3>
+                        </div>
 
-            {streamStarted && (
-                <div className='video-feed-container'>
-                    <div className='video-feed-overlay'>
-                        <img
-                            id="video-feed"
-                            src="http://localhost:5000/video_feed"
-                            alt="Video Stream"
-                            style={{ width: '320px', height: '240px', border: '1px solid #ccc' }}
-                        />
                     </div>
-                    <div className='poppins-regular'>
-                        <h2>Total Coconuts: {totalCount}</h2>
-                        <h3>Active Bucket: {buckets[activeBucket + 1] && buckets[activeBucket].id}</h3>
-                    </div>
-
+                )}
+                <div className='bucket-container'>
+                    {bucketElements}
                 </div>
-            )}
-            <div className='bucket-container'>
-                {bucketElements}
             </div>
         </div>
     )

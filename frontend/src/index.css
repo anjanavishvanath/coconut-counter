@@ -62,17 +62,24 @@ h1{
   background-color: #166dfe;
 }
 
-.video-feed-container{
-  width: 100%;
+.main-container{
   display: flex;
   justify-content: space-around;
+  align-items: stretch;
+  width: 100%;
+}
+
+.video-feed-container{
+  width: 40%;
+  display: flex;
+  flex-direction: column;
   align-items: center;
 }
 
 .bucket-container{
   width: 100%;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 2px;
   margin-top: 20px;
 }
@@ -84,10 +91,6 @@ h1{
   background: #828282;
 }
 
-.bucket:hover{
-  background: #6b6b6b;
-}
-
 .filled{
   background: #00FA9A;
   color: #000;
@@ -96,4 +99,14 @@ h1{
 .active{
   background: #FF6347;
   color: #000;
+}
+
+input {
+  all: unset;  /* Resets almost all default styles */
+}
+
+input:hover{
+  cursor: pointer;
+  background: #fff;
+  color: #000
 }
