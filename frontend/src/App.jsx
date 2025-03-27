@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import Bucket from './components/Bucket';
+import Keyboard from 'react-simple-keyboard';
+import 'react-simple-keyboard/build/css/index.css';
 
 export default function App() {
-
     const [streamStarted, setStreamStarted] = useState(false);
     const [totalCount, setTotalCount] = useState(0);
     const [activeBucket, setActiveBucket] = useState(0);
     const [filledBucketsCount, setFilledBucketsCount] = useState(0);
-    const [buckets, setBuckets] = useState(Array.from({ length: 14 }, (_, i) => (
-        { id: i + 1, count: 0, set_value: 5 })))
+    const [buckets, setBuckets] = useState(Array.from({ length: 14 }, (_, i) => ({ id: i + 1, count: 0, set_value: 5 })));
+    const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+    const [selectedBucketId, setSelectedBucketId] = useState(null);
 
     //start and stop the stream. Attached to the button
     const toggleCounting = async () => {
@@ -47,12 +49,20 @@ export default function App() {
                     <div>Bucket No: {bucket.id}</div>
                     <span>{bucket.count}</span>
                     <span>/<input
-                    value={bucket.set_value !== undefined ? bucket.set_value : "0"}
-                    type='number'
-                    inputMode="numeric"
-                    name="set_value"
-                    onChange={(e) => handlePresetValueChange(e, bucket.id)} 
-                    disabled={bucket.count >= bucket.set_value}/></span>
+                        value={bucket.set_value !== undefined ? bucket.set_value : "1"}
+                        type='number'
+                        inputMode="numeric"
+                        name="set_value"
+                        onChange={(e) => handlePresetValueChange(e, bucket.id)}
+                        onFocus={() => {
+                            setIsKeyboardVisible(true);
+                            setSelectedBucketId(bucket.id);
+                        }}
+                        onBlur={() => {
+                            setTimeout(() => setIsKeyboardVisible(false), 100); // Add a small delay
+                            setSelectedBucketId(null);
+                        }}
+                        disabled={bucket.count >= bucket.set_value}/></span>
                 </div>
             </Bucket>
         )
@@ -61,11 +71,25 @@ export default function App() {
     //handle input change for the set value of the bucket
     function handlePresetValueChange(event, id) {
         const { value } = event.target
-        const numericValue = value === "" ? 0 : parseInt(value, 10)
+        const numericValue = value === "" ? 1 : parseInt(value, 10)
         setBuckets(prevBuckets => prevBuckets.map(bucket =>
             bucket.id === id ? { ...bucket, set_value: numericValue } : bucket
         ))
     }
+
+    // Handle input from the virtual keyboard
+    const handleKeyboardInput = (input) => {
+        if (selectedBucketId !== null) {
+            setBuckets(prevBuckets => prevBuckets.map(bucket => {
+                if (bucket.id === selectedBucketId) {
+                    const newValueString = bucket.set_value.toString() + input;
+                    const newValue = newValueString === "" ? 0 : parseInt(newValueString, 10);
+                    return { ...bucket, set_value: newValue };
+                }
+                return bucket;
+            }));
+        }
+    };
 
     // Poll the backend for the current count every second only when the stream is active
     useEffect(() => {
@@ -135,7 +159,7 @@ export default function App() {
                     <button onClick={toggleCounting} className='poppins-regular button'>
                         {streamStarted ? "Stop Counting" : "Start Counting"}
                     </button>
-                    <button onClick={resetCount} className='poppins-regular button reset'>Reset Count</button>  
+                    <button onClick={resetCount} className='poppins-regular button reset'>Reset Count</button>
                 </nav>
             </header>
             <div className='main-container'>
@@ -153,12 +177,20 @@ export default function App() {
                             <h2>Total Coconuts: {totalCount}</h2>
                             <h3>Active Bucket: {buckets[activeBucket + 1] && buckets[activeBucket].id}</h3>
                         </div>
-
                     </div>
                 )}
                 <div className='bucket-container'>
                     {bucketElements}
                 </div>
+                {isKeyboardVisible && (
+                    <Keyboard
+                        layout={{
+                            default: ['1 2 3', '4 5 6', '7 8 9', '0 {bksp}']
+                        }}
+                        onChange={handleKeyboardInput}
+                        inputName="set_value" // You can use a generic name here
+                    />
+                )}
             </div>
         </div>
     )
