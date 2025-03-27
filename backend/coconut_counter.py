@@ -6,13 +6,17 @@ import time
 current_count = 0
 processing = True
 
+def reset_coconut_count():
+    global current_count
+    current_count = 0
+
 def run_coconut_counter_stream(video_path="../videos/vid4.mp4"):
     global current_count, processing
     current_count = 0  # reset on start
     processing = True  # ensure processing flag is True on start
 
     # --- Setup Video Capture ---
-    cap = cv2.VideoCapture(video_path) #replace with 0 to use the camera
+    cap = cv2.VideoCapture(video_path) #replace with video_path to use the video
     if not cap.isOpened():
         print("Error: Could not open video.")
         return
@@ -44,6 +48,9 @@ def run_coconut_counter_stream(video_path="../videos/vid4.mp4"):
         if not ret:
             print("End of video reached or an error occurred")
             break
+        
+        # Flip the frame horizontally to correct mirroring
+        # frame = cv2.flip(frame, 1)
 
         # Define ROI and draw its rectangle
         roi = frame[y1:y2, x1:x2]

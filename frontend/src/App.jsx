@@ -27,6 +27,18 @@ export default function App() {
         }
     };
 
+    const resetCount = async () => {
+        try {
+            await fetch("http://localhost:5000/reset_count", { method: "POST" });
+            setTotalCount(0);
+            setFilledBucketsCount(0);
+            setActiveBucket(0);
+            setBuckets(prevBuckets => prevBuckets.map(bucket => ({ ...bucket, count: 0 })));
+        } catch (error) {
+            console.error("Error resetting count:", error);
+        }
+    };
+
     // Convert the state to Bucket components
     const bucketElements = buckets.map(bucket => {
         return (
@@ -114,10 +126,15 @@ export default function App() {
 
     return (
         <div className="App">
-            <h1 className='poppins-extrabold'>Coconut Counter</h1>
-            <button onClick={toggleCounting} className='poppins-regular button'>
-                {streamStarted ? "Stop Counting" : "Start Counting"}
-            </button>
+            <header>
+                <h1 className='poppins-extrabold'>Coconut Counter</h1>
+                <nav>
+                    <button onClick={toggleCounting} className='poppins-regular button'>
+                        {streamStarted ? "Stop Counting" : "Start Counting"}
+                    </button>
+                    <button onClick={resetCount} className='poppins-regular button reset'>Reset Count</button>  
+                </nav>
+            </header>
 
             {streamStarted && (
                 <div className='video-feed-container'>
@@ -126,7 +143,7 @@ export default function App() {
                             id="video-feed"
                             src="http://localhost:5000/video_feed"
                             alt="Video Stream"
-                            style={{ width: '600px', height: '400px', border: '1px solid #ccc' }}
+                            style={{ width: '640px', height: '480px', border: '1px solid #ccc' }}
                         />
                     </div>
                     <div className='poppins-regular'>

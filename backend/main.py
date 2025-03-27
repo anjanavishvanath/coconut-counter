@@ -44,6 +44,13 @@ def resume_conveyor():
     #lgpio.gpio_write(gpio_handle, STOP_CONVEYOR_PIN, 0) # send resume signal
     return jsonify({"message": "Conveyor resumed."})
 
+@app.route('/reset_count', methods=['POST'])
+def reset_count():
+    global current_count
+    from coconut_counter import reset_coconut_count
+    reset_coconut_count()
+    return jsonify({"message": "Count reset."})
+
 #Automatically resume when an external signal is received
 def monitor_resume_signal():
     while True:
