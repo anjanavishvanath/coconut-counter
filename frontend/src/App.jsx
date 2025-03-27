@@ -143,7 +143,7 @@ export default function App() {
                             id="video-feed"
                             src="http://localhost:5000/video_feed"
                             alt="Video Stream"
-                            style={{ width: '640px', height: '480px', border: '1px solid #ccc' }}
+                            style={{ width: '320px', height: '240px', border: '1px solid #ccc' }}
                         />
                     </div>
                     <div className='poppins-regular'>
