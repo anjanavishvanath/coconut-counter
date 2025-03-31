@@ -8,7 +8,7 @@ export default function App() {
     const [totalCount, setTotalCount] = useState(0);
     const [activeBucket, setActiveBucket] = useState(0);
     const [filledBucketsCount, setFilledBucketsCount] = useState(0);
-    const [buckets, setBuckets] = useState(Array.from({ length: 14 }, (_, i) => ({ id: i + 1, count: 0, set_value: 500 })));
+    const [buckets, setBuckets] = useState(Array.from({ length: 14 }, (_, i) => ({ id: i + 1, count: 0, set_value: 800 })));
     const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
     const [selectedBucketId, setSelectedBucketId] = useState(null);
     const [changeAllSetValues, setChangeAllSetValues] = useState(0);
@@ -190,7 +190,7 @@ export default function App() {
                                     id="video-feed"
                                     src="http://localhost:5000/video_feed"
                                     alt="Video Stream"
-                                    style={{ width: '320px', height: '240px', border: '1px solid #ccc' }}
+                                    style={{ width: '640px', height: '480px', border: '1px solid #ccc' }}
                                 />
                             </div>
                             <div className='poppins-regular'>

@@ -3,7 +3,7 @@ import math
 
 # --- Setup Video Capture ---
 vid_path = "videos/vid4.mp4"
-cap = cv2.VideoCapture(vid_path)  # Capture video from file
+cap = cv2.VideoCapture(0)  # Capture video from file
 
 if not cap.isOpened():
     print("Error: Could not open video.")
@@ -73,6 +73,7 @@ while True:
         if M["m00"] != 0:
             cx = int(M["m10"] / M["m00"])
             cy = int(M["m01"] / M["m00"])
+            print(cx,cy)
             current_centroids.append((cx, cy))
             x, y, w, h = cv2.boundingRect(contour)
             cv2.rectangle(roi, (x, y), (x+w, y+h), (255, 0, 0), 2)
@@ -133,7 +134,7 @@ while True:
         if not data["counted"] and actual_prev_cx <= trigger_line_x and actual_cx > trigger_line_x:
             coconut_count += 1
             data["counted"] = True
-            print(f"Object {object_id} crossed the trigger line. Total count: {coconut_count}")
+            # print(f"Object {object_id} crossed the trigger line. Total count: {coconut_count}")
 
         # Optionally draw the centroid and ID for visualization:
         cv2.circle(roi, (cx, cy), 4, (0, 0, 255), -1)
@@ -147,7 +148,7 @@ while True:
 
     cv2.imshow("Frame", frame)
     # Press 'q' to quit (waitKey of 1 is typical for video; here 0 is used for debugging)
-    if cv2.waitKey(0) & 0xFF == ord('q'):
+    if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
     # Optionally write the frame to the output video

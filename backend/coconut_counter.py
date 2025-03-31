@@ -29,18 +29,17 @@ def run_coconut_counter_stream(video_path="../videos/vid4.mp4"):
     print("Video Height:", height)
 
     # --- ROI and Color Thresholding Parameters ---
-    x1, y1, x2, y2 = 0, 205, 478, 709
     lower_brown = (8, 50, 50)
     upper_brown = (30, 255, 255)
     min_contour_area = 2500
 
     # --- Trigger Line and Counting ---
-    trigger_line_x = width - 50
+    trigger_line_y = 150
 
     # --- Tracker Initialization ---
     tracked_objects = {}
     next_object_id = 0
-    distance_threshold = 50
+    distance_threshold = 120
     max_disappeared = 5
 
     while processing:
@@ -50,11 +49,10 @@ def run_coconut_counter_stream(video_path="../videos/vid4.mp4"):
             break
         
         # Flip the frame horizontally to correct mirroring
-        frame = cv2.flip(frame, 1)
+        # frame = cv2.flip(frame, 1)
 
         # Define ROI and draw its rectangle
-        roi = frame[y1:y2, x1:x2]
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        roi = frame
 
         # Convert ROI to HSV and threshold for brown color
         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
@@ -119,10 +117,8 @@ def run_coconut_counter_stream(video_path="../videos/vid4.mp4"):
         for object_id, data in tracked_objects.items():
             cx, cy = data["centroid"]
             prev_cx, prev_cy = data["previous_centroid"]
-            actual_cx = cx + x1
-            actual_prev_cx = prev_cx + x1
 
-            if not data["counted"] and actual_prev_cx <= trigger_line_x and actual_cx > trigger_line_x:
+            if not data["counted"] and prev_cy >= trigger_line_y and cy < trigger_line_y:
                 current_count += 1
                 data["counted"] = True
                 # print(f"Object {object_id} crossed the trigger line. Total count: {current_count}")
@@ -131,7 +127,7 @@ def run_coconut_counter_stream(video_path="../videos/vid4.mp4"):
             cv2.putText(roi, str(object_id), (cx - 10, cy - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
-        cv2.line(frame, (trigger_line_x, 0), (trigger_line_x, height), (0, 0, 255), 2)
+        cv2.line(frame, (0, trigger_line_y), (width, trigger_line_y), (0, 0, 255), 2)
         cv2.putText(frame, f"Coconuts: {current_count}", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
@@ -146,6 +142,6 @@ def run_coconut_counter_stream(video_path="../videos/vid4.mp4"):
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n'
                b'X-Count: ' + str(current_count).encode() + b'\r\n')
 
-        time.sleep(0.03)  # Control stream frame rate
+        # time.sleep(0.03)  # Control stream frame rate
 
     cap.release()
