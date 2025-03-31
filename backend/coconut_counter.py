@@ -16,7 +16,7 @@ def run_coconut_counter_stream(video_path="../videos/vid4.mp4"):
     processing = True  # ensure processing flag is True on start
 
     # --- Setup Video Capture ---
-    cap = cv2.VideoCapture(video_path) #replace with video_path to use the video
+    cap = cv2.VideoCapture(0) #replace with video_path to use the video
     if not cap.isOpened():
         print("Error: Could not open video.")
         return
@@ -50,7 +50,7 @@ def run_coconut_counter_stream(video_path="../videos/vid4.mp4"):
             break
         
         # Flip the frame horizontally to correct mirroring
-        # frame = cv2.flip(frame, 1)
+        frame = cv2.flip(frame, 1)
 
         # Define ROI and draw its rectangle
         roi = frame[y1:y2, x1:x2]

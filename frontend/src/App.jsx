@@ -8,9 +8,10 @@ export default function App() {
     const [totalCount, setTotalCount] = useState(0);
     const [activeBucket, setActiveBucket] = useState(0);
     const [filledBucketsCount, setFilledBucketsCount] = useState(0);
-    const [buckets, setBuckets] = useState(Array.from({ length: 14 }, (_, i) => ({ id: i + 1, count: 0, set_value: 5 })));
+    const [buckets, setBuckets] = useState(Array.from({ length: 14 }, (_, i) => ({ id: i + 1, count: 0, set_value: 500 })));
     const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
     const [selectedBucketId, setSelectedBucketId] = useState(null);
+    const [changeAllSetValues, setChangeAllSetValues] = useState(0);
 
     //start and stop the stream. Attached to the button
     const toggleCounting = async () => {
@@ -44,12 +45,12 @@ export default function App() {
     // Convert the state to Bucket components
     const bucketElements = buckets.map(bucket => {
         return (
-            <Bucket key={bucket.id} isFilled={bucket.count >= bucket.set_value ? "filled": ""} isActive={bucket.id === activeBucket+1 ? "active" : ""}>
+            <Bucket key={bucket.id} isFilled={bucket.count >= bucket.set_value ? "filled" : ""} isActive={bucket.id === activeBucket + 1 ? "active" : ""}>
                 <div>
-                    <div>Bucket No: {bucket.id}</div>
-                    <span>{bucket.count}</span>
-                    <span>/<input
-                        value={bucket.set_value !== undefined ? bucket.set_value : "1"}
+                    <div className='centerText poppins-regular'>Bucket No: {bucket.id}</div>
+                    <span className='poppins-regular count'>{bucket.count}
+                        /<input
+                        value={bucket.set_value !== undefined ? bucket.set_value : "0"}
                         type='number'
                         inputMode="numeric"
                         name="set_value"
@@ -58,11 +59,8 @@ export default function App() {
                             setIsKeyboardVisible(true);
                             setSelectedBucketId(bucket.id);
                         }}
-                        onBlur={() => {
-                            setTimeout(() => setIsKeyboardVisible(false), 100); // Add a small delay
-                            setSelectedBucketId(null);
-                        }}
-                        disabled={bucket.count >= bucket.set_value}/></span>
+                        disabled={bucket.count >= bucket.set_value}
+                        className='poppins-regular bold' /></span>
                 </div>
             </Bucket>
         )
@@ -71,7 +69,7 @@ export default function App() {
     //handle input change for the set value of the bucket
     function handlePresetValueChange(event, id) {
         const { value } = event.target
-        const numericValue = value === "" ? 1 : parseInt(value, 10)
+        const numericValue = value === "" ? 0 : parseInt(value, 10)
         setBuckets(prevBuckets => prevBuckets.map(bucket =>
             bucket.id === id ? { ...bucket, set_value: numericValue } : bucket
         ))
@@ -82,12 +80,14 @@ export default function App() {
         if (selectedBucketId !== null) {
             setBuckets(prevBuckets => prevBuckets.map(bucket => {
                 if (bucket.id === selectedBucketId) {
-                    const newValueString = bucket.set_value.toString() + input;
+                    const newValueString = input;
                     const newValue = newValueString === "" ? 0 : parseInt(newValueString, 10);
                     return { ...bucket, set_value: newValue };
                 }
                 return bucket;
             }));
+        }else{
+            setBuckets(prevBuckets => prevBuckets.map(bucket => ({...bucket, set_value : parseInt(input, 10) || 0})));
         }
     };
 
@@ -149,13 +149,12 @@ export default function App() {
         }
     }, [streamStarted, activeBucket])
 
-    // console.log(activeBucket, JSON.stringify(buckets))
-
     return (
         <div className="App">
             <header>
                 <h1 className='poppins-extrabold'>Coconut Counter</h1>
                 <nav>
+                    <button onClick={() => setIsKeyboardVisible(true)} className='poppins-regular button set'>Set All</button>
                     <button onClick={toggleCounting} className='poppins-regular button'>
                         {streamStarted ? "Stop Counting" : "Start Counting"}
                     </button>
@@ -163,34 +162,47 @@ export default function App() {
                 </nav>
             </header>
             <div className='main-container'>
-                {streamStarted && (
-                    <div className='video-feed-container'>
-                        <div className='video-feed-overlay'>
-                            <img
-                                id="video-feed"
-                                src="http://localhost:5000/video_feed"
-                                alt="Video Stream"
-                                style={{ width: '320px', height: '240px', border: '1px solid #ccc' }}
+                <div className='action-side'>
+                    {isKeyboardVisible && (
+                        <div>
+                            <button
+                                className='close-keyboard'
+                                onClick={() => {
+                                    setIsKeyboardVisible(false)
+                                    setSelectedBucketId(null);
+                                }}
+                            >
+                                ✖
+                            </button>
+                            <Keyboard
+                                layout={{
+                                    default: ['1 2 3', '4 5 6', '7 8 9', '0 {bksp}']
+                                }}
+                                onChange={handleKeyboardInput}
+                                inputName="set_value" // You can use a generic name here
                             />
                         </div>
-                        <div className='poppins-regular'>
-                            <h2>Total Coconuts: {totalCount}</h2>
-                            <h3>Active Bucket: {buckets[activeBucket + 1] && buckets[activeBucket].id}</h3>
+                    )}
+                    {streamStarted && (
+                        <div className='video-feed-container'>
+                            <div className='video-feed-overlay'>
+                                <img
+                                    id="video-feed"
+                                    src="http://localhost:5000/video_feed"
+                                    alt="Video Stream"
+                                    style={{ width: '320px', height: '240px', border: '1px solid #ccc' }}
+                                />
+                            </div>
+                            <div className='poppins-regular'>
+                                <h2>Total Coconuts: {totalCount}</h2>
+                                <h3>Active Bucket: {buckets[activeBucket + 1] && buckets[activeBucket].id}</h3>
+                            </div>
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
                 <div className='bucket-container'>
                     {bucketElements}
                 </div>
-                {isKeyboardVisible && (
-                    <Keyboard
-                        layout={{
-                            default: ['1 2 3', '4 5 6', '7 8 9', '0 {bksp}']
-                        }}
-                        onChange={handleKeyboardInput}
-                        inputName="set_value" // You can use a generic name here
-                    />
-                )}
             </div>
         </div>
     )
