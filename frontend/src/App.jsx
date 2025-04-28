@@ -11,7 +11,7 @@ export default function App() {
   const [isStreaming, setIsStreaming] = useState(false);
 
   //initializing bucket related states
-  const [buckets, setBuckets] = useState(Array.from({ length: 3 }, (_, i) => ({ id: i + 1, count: 0, set_value: 5 })));
+  const [buckets, setBuckets] = useState(Array.from({ length: 3 }, (_, i) => ({ id: i + 1, count: 0, set_value: 2 })));
   const [activeBucket, setActiveBucket] = useState(buckets[0].id);
   const [filledBucketsCount, setFilledBucketsCount] = useState(0);
   const activeBucketRef = useRef(activeBucket);
@@ -20,6 +20,21 @@ export default function App() {
   //initializing keyboard related states
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [selectedBucket, setSelectedBucket] = useState(null);
+  const selectedBucketRef = useRef(selectedBucket);
+
+  //states for refilling
+  const [refillingMode, setRefillingMode] = useState(false);
+  const refillingModeRef = useRef(refillingMode);
+  const previousCountinBucket = useRef(0);
+
+  // keep the ref in sync with state
+  useEffect(() => {
+    selectedBucketRef.current = selectedBucket;
+  }, [selectedBucket]);
+
+  useEffect(() => {
+    refillingModeRef.current = refillingMode;
+  }, [refillingMode]);
 
   useEffect(() => {
     if (!isStreaming) return;
@@ -45,6 +60,8 @@ export default function App() {
 
       const active = activeBucketRef.current;
       const filledCount = filledBucketsCountRef.current;
+      const isRefill = refillingModeRef.current;
+      const sel = selectedBucketRef.current;
 
       setBuckets(prevBuckets => {
         let newActiveBucket = active;
@@ -52,14 +69,24 @@ export default function App() {
           if (bucket.id === active) {
             let newCount = data.count - filledCount; // Calculate the new count for the active bucket
             //check if the newCount reached the set value of active bucket
-            if (newCount >= bucket.set_value) {
-              newActiveBucket = newActiveBucket < prevBuckets.length ? bucket.id + 1: newActiveBucket; // Move to the next bucket
+            if (!refillingMode && newCount >= bucket.set_value) {
+              newActiveBucket = newActiveBucket < prevBuckets.length ? bucket.id + 1 : newActiveBucket; // Move to the next bucket
+            }
+
+            prevBuckets.forEach(b => {
+              if (b.id === newActiveBucket && isRefill && sel != null) {
+                newActiveBucket = sel;
+              }
+            });
+
+            if (bucket.id === buckets.length && newCount >= bucket.set_value) {
+              setRefillingMode(true);
             }
             return { ...bucket, count: newCount }; //update the active bucket
           }
           return bucket; //return the rest of the buckets unchanged
         });
-        
+
         // update active bucket
         if (newActiveBucket !== active) {
           setActiveBucket(newActiveBucket);
@@ -67,13 +94,13 @@ export default function App() {
 
           setFilledBucketsCount(() => {
             const newFilled = updatedBuckets
-            .filter(bucket => bucket.id < newActiveBucket)
-            .reduce((sum, bucket) => sum + bucket.count, 0);
+              .filter(bucket => bucket.id < newActiveBucket)
+              .reduce((sum, bucket) => sum + bucket.count, 0);
             filledBucketsCountRef.current = newFilled;
             return newFilled;
           });
-        } 
-        
+        }
+
         return updatedBuckets
       })
     }
@@ -90,6 +117,7 @@ export default function App() {
   //start stop function
   const handleStartStop = () => {
     setIsStreaming(!isStreaming);
+    setRefillingMode(false);
   }
 
   //reset function
@@ -101,14 +129,16 @@ export default function App() {
     }
     setTotalCoconutCount(0);
     setImgSrc("");
-    setBuckets(Array.from({ length: 3 }, (_, i) => ({ id: i + 1, count: 0, set_value: 5 })));
+    setBuckets(Array.from({ length: 3 }, (_, i) => ({ id: i + 1, count: 0, set_value: 2 })));
     setActiveBucket(1);
     setFilledBucketsCount(0);
     activeBucketRef.current = 1;
     filledBucketsCountRef.current = 0;
+    refillingMode(false);
+    setIsKeyboardVisible(false);
 
     //tell the server to zero the count
-    if(ws.current && ws.current.readyState == WebSocket.OPEN){
+    if (ws.current && ws.current.readyState == WebSocket.OPEN) {
       ws.current.send("reset");
     }
   }
@@ -120,14 +150,14 @@ export default function App() {
 
   const handleKeyboardInput = (input) => {
     const newValue = parseInt(input) ? parseInt(input) : 0;
-    if(selectedBucket !== null) {
+    if (selectedBucket !== null) {
       setBuckets(prevBuckets => prevBuckets.map(bucket => {
-        if(bucket.id === selectedBucket){
+        if (bucket.id === selectedBucket) {
           return { ...bucket, set_value: newValue }
         }
         return bucket;
       }))
-    }else{
+    } else {
       setBuckets(prevBuckets => prevBuckets.map(bucket => {
         return { ...bucket, set_value: newValue }
       }))
@@ -148,7 +178,9 @@ export default function App() {
         setIsKeyboardVisible(true);
       }}
     />
-  ))
+  ));
+
+  console.log("refillingtMode", refillingMode, "| Selected Bucket", selectedBucket, "| Active Bucket", activeBucket);
 
   return (
     <>
@@ -157,9 +189,9 @@ export default function App() {
         <nav>
           <button className="startBtn" onClick={handleStartStop} >{isStreaming ? "Stop" : "Start"}</button>
           <button className="setBtn" onClick={() => {
-              setIsKeyboardVisible(!isKeyboardVisible)
-              setSelectedBucket(null);
-            }}>Set All</button>
+            setIsKeyboardVisible(!isKeyboardVisible)
+            setSelectedBucket(null);
+          }}>Set All</button>
           <button className="finishButton">Finish</button>
           <button className="resetBtn" onClick={handleReset}>Reset</button>
         </nav>
