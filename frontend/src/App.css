@@ -1,10 +1,11 @@
 body{
   background-color: #f0f0f0;
-  font-family: Arial, sans-serif;
+  font-family: "Poppins", sans-serif;
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
+
 
 header{
   display: flex;
@@ -96,6 +97,18 @@ button{
   background: #ccc
 }
 
+.bucket > h3 {
+  text-align: center;
+  font-size: 1.2rem;
+  margin: 5px;
+}
+
+.bucket > p {
+  text-align: center;
+  font-size: 1.5rem;
+  margin: 5px;
+}
+
 .active{
   background: #0056b3;
   color: #fff
@@ -106,6 +119,20 @@ button{
   color: #fff
 }
 
+.selected{
+  background: #111;
+  color: #fff;
+  width: 90%;
+  height: 90%;
+  justify-self: center;
+  align-self: center;
+}
+
+.selected span {
+  font-size: 1.8rem;
+  font-weight: 600;
+}
+
 /* Keyboard */
 .close{
   width: 100%;
@@ -114,4 +141,18 @@ button{
 
 .close:hover{
   background: #ff4c3b;
+}
+
+.display{
+  width: 100%;
+  height: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: 2rem;
+  font-weight: 600;
+}
+
+.keyboard-functions > button{
+  width: 50%;
 }

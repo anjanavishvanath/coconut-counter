@@ -11,7 +11,7 @@ export default function App() {
   const [isStreaming, setIsStreaming] = useState(false);
 
   //initializing bucket related states
-  const [buckets, setBuckets] = useState(Array.from({ length: 3 }, (_, i) => ({ id: i + 1, count: 0, set_value: 2 })));
+  const [buckets, setBuckets] = useState(Array.from({ length: 14 }, (_, i) => ({ id: i + 1, count: 0, set_value: 2 })));
   const [activeBucket, setActiveBucket] = useState(buckets[0].id);
   const [filledBucketsCount, setFilledBucketsCount] = useState(0);
   const activeBucketRef = useRef(activeBucket);
@@ -25,7 +25,7 @@ export default function App() {
   //states for refilling
   const [refillingMode, setRefillingMode] = useState(false);
   const refillingModeRef = useRef(refillingMode);
-  const previousCountinBucket = useRef(0);
+  const [keyboardValue, setKeyboardValue] = useState(0);
 
   // keep the ref in sync with state
   useEffect(() => {
@@ -35,6 +35,12 @@ export default function App() {
   useEffect(() => {
     refillingModeRef.current = refillingMode;
   }, [refillingMode]);
+
+  // keep these refs in sync with their states
+  useEffect(() => {
+    activeBucketRef.current       = activeBucket;
+    filledBucketsCountRef.current = filledBucketsCount;
+  }, [activeBucket, filledBucketsCount]);
 
   useEffect(() => {
     if (!isStreaming) return;
@@ -93,15 +99,22 @@ export default function App() {
           activeBucketRef.current = newActiveBucket;
 
           setFilledBucketsCount(() => {
-            const newFilled = updatedBuckets
-              .filter(bucket => bucket.id < newActiveBucket)
-              .reduce((sum, bucket) => sum + bucket.count, 0);
-            filledBucketsCountRef.current = newFilled;
-            return newFilled;
+            if(!isRefill){
+              // if in intial loading, count the coconuts in filled buckets
+              const newFilled = updatedBuckets
+                .filter(bucket => bucket.id < newActiveBucket)
+                .reduce((sum, bucket) => sum + bucket.count, 0);
+              filledBucketsCountRef.current = newFilled;
+              return newFilled;
+            }else{
+              // if in refilling mode, count the coconuts in all the buckets before moving to this bucket
+              const newFilled = updatedBuckets.reduce((sum, bucket) => sum+bucket.count, 0) -  (updatedBuckets[newActiveBucket - 1].count);
+              return newFilled;
+            }
           });
         }
 
-        return updatedBuckets
+        return updatedBuckets;
       })
     }
 
@@ -122,26 +135,38 @@ export default function App() {
 
   //reset function
   const handleReset = () => {
-    if (!window.confirm("Are you sure you want to reset all data?")) return;
-    // Force close connection if streaming
-    if (isStreaming) {
-      setIsStreaming(false); // Triggers useEffect cleanup
+    if (!window.confirm("Are you sure you want to reset all data?")) {
+      return;
     }
+
+    // 1) Stop streaming & tell server to reset its counter
+    if (isStreaming && ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send("stop");
+      ws.current.send("reset");
+      ws.current.close();
+    }
+    setIsStreaming(false);
+
+    // 2) Reset all React state
     setTotalCoconutCount(0);
     setImgSrc("");
-    setBuckets(Array.from({ length: 3 }, (_, i) => ({ id: i + 1, count: 0, set_value: 2 })));
+    setBuckets(Array.from(
+      { length: 14 },
+      (_, i) => ({ id: i + 1, count: 0, set_value: 2 })
+    ));
     setActiveBucket(1);
     setFilledBucketsCount(0);
+    setRefillingMode(false);
+    setIsKeyboardVisible(false);
+    setSelectedBucket(null);
+
+    // 3) Reset refs to match
     activeBucketRef.current = 1;
     filledBucketsCountRef.current = 0;
-    refillingMode(false);
-    setIsKeyboardVisible(false);
+    refillingModeRef.current = false;
+    selectedBucketRef.current = null;
+  };
 
-    //tell the server to zero the count
-    if (ws.current && ws.current.readyState == WebSocket.OPEN) {
-      ws.current.send("reset");
-    }
-  }
 
   //keyboard function
   const closeKeyboard = () => {
@@ -150,18 +175,37 @@ export default function App() {
 
   const handleKeyboardInput = (input) => {
     const newValue = parseInt(input) ? parseInt(input) : 0;
-    if (selectedBucket !== null) {
+    setKeyboardValue(newValue);
+  }
+
+  const handleKeyboardChange = () => {
+    if (selectedBucket !== null) { //if a bucket is selected
       setBuckets(prevBuckets => prevBuckets.map(bucket => {
         if (bucket.id === selectedBucket) {
-          return { ...bucket, set_value: newValue }
+          return { ...bucket, set_value: keyboardValue }
         }
         return bucket;
       }))
-    } else {
+    } else { //if no bucket is selected, update set_value for all buckets
       setBuckets(prevBuckets => prevBuckets.map(bucket => {
-        return { ...bucket, set_value: newValue }
+        return { ...bucket, set_value: keyboardValue }
       }))
     }
+    setKeyboardValue(0);
+    setIsKeyboardVisible(false);
+  }
+
+  const handleKeyboardAdd = () => {
+    if(selectedBucket !== null) {
+      setBuckets(prevBuckets => prevBuckets.map(bucket => {
+        if (bucket.id === selectedBucket){
+          return { ...bucket, set_value: bucket.set_value + keyboardValue }
+        }
+        return bucket;
+      }))
+    }
+    setKeyboardValue(0);
+    setIsKeyboardVisible(false);
   }
 
   //creating set of buckets
@@ -173,14 +217,21 @@ export default function App() {
       set_value={bucket.set_value}
       isFilled={bucket.count >= bucket.set_value}
       isActive={bucket.id === activeBucket}
+      isSelected={bucket.id === selectedBucket}
       handleClick={() => {
-        setSelectedBucket(bucket.id);
-        setIsKeyboardVisible(true);
+        if(selectedBucket === bucket.id ){
+          setSelectedBucket(null);
+          setIsKeyboardVisible(false);
+        }else{
+          setSelectedBucket(bucket.id);
+          setIsKeyboardVisible(true);
+        }
       }}
     />
   ));
 
-  console.log("refillingtMode", refillingMode, "| Selected Bucket", selectedBucket, "| Active Bucket", activeBucket);
+  // console.log("refillingtMode", refillingMode, "| Selected Bucket", selectedBucket, "| Active Bucket", activeBucket);
+  console.log("filled buckets count", filledBucketsCountRef.current);
 
   return (
     <>
@@ -198,7 +249,14 @@ export default function App() {
       </header>
       <div className="main_container">
         <div className="video_container">
-          {isKeyboardVisible && <KeyboardComponent handleInput={handleKeyboardInput} handleClose={() => closeKeyboard()} />}
+          {isKeyboardVisible &&
+            <KeyboardComponent
+              handleInput={handleKeyboardInput}
+              handleClose={() => closeKeyboard()}
+              value={keyboardValue}
+              handleChange={handleKeyboardChange}
+              handleAdd={handleKeyboardAdd}
+            />}
           <h2>Total Coconuts: {totalCoconutCount}</h2>
           <h2>Active Bucket: {activeBucket}</h2>
           {imgSrc && <img className="video_frame" src={imgSrc} alt="Conveyor Video Stream" />}
