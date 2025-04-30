@@ -1,209 +1,271 @@
-import React, { useState, useEffect } from 'react';
-import Bucket from './components/Bucket';
-import Keyboard from 'react-simple-keyboard';
-import 'react-simple-keyboard/build/css/index.css';
+import { useState, useEffect, useRef } from "react";
+import Bucket from "./components/Bucket";
+import KeyboardComponent from "./components/KeyboardComponent";
+import './App.css'
 
 export default function App() {
-    const [streamStarted, setStreamStarted] = useState(false);
-    const [totalCount, setTotalCount] = useState(0);
-    const [activeBucket, setActiveBucket] = useState(0);
-    const [filledBucketsCount, setFilledBucketsCount] = useState(0);
-    const [buckets, setBuckets] = useState(Array.from({ length: 14 }, (_, i) => ({ id: i + 1, count: 0, set_value: 800 })));
-    const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-    const [selectedBucketId, setSelectedBucketId] = useState(null);
-    const [changeAllSetValues, setChangeAllSetValues] = useState(0);
+  // Initializing states for total coconut count, image source, WebSocket connection, and streaming status
+  const [totalCoconutCount, setTotalCoconutCount] = useState(0);
+  const [imgSrc, setImgSrc] = useState("");
+  const ws = useRef(null);
+  const [isStreaming, setIsStreaming] = useState(false);
 
-    //start and stop the stream. Attached to the button
-    const toggleCounting = async () => {
-        // If currently running, stop the stream by calling the stop endpoint
-        if (streamStarted) {
-            try {
-                await fetch("http://localhost:5000/stop_stream", {
-                    method: "POST",
-                });
-            } catch (error) {
-                console.error("Error stopping stream:", error);
-            }
-            setStreamStarted(false);
-        } else {
-            setStreamStarted(true);
-        }
-    };
+  //initializing bucket related states
+  const [buckets, setBuckets] = useState(Array.from({ length: 14 }, (_, i) => ({ id: i + 1, count: 0, set_value: 2 })));
+  const [activeBucket, setActiveBucket] = useState(buckets[0].id);
+  const [filledBucketsCount, setFilledBucketsCount] = useState(0);
+  const activeBucketRef = useRef(activeBucket);
+  const filledBucketsCountRef = useRef(filledBucketsCount);
 
-    const resetCount = async () => {
-        try {
-            await fetch("http://localhost:5000/reset_count", { method: "POST" });
-            setTotalCount(0);
-            setFilledBucketsCount(0);
-            setActiveBucket(0);
-            setBuckets(prevBuckets => prevBuckets.map(bucket => ({ ...bucket, count: 0 })));
-        } catch (error) {
-            console.error("Error resetting count:", error);
-        }
-    };
+  //initializing keyboard related states
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [selectedBucket, setSelectedBucket] = useState(null);
+  const selectedBucketRef = useRef(selectedBucket);
 
-    // Convert the state to Bucket components
-    const bucketElements = buckets.map(bucket => {
-        return (
-            <Bucket key={bucket.id} isFilled={bucket.count >= bucket.set_value ? "filled" : ""} isActive={bucket.id === activeBucket + 1 ? "active" : ""}>
-                <div>
-                    <div className='centerText poppins-regular'>Bucket No: {bucket.id}</div>
-                    <span className='poppins-regular count'>{bucket.count}
-                        /<input
-                        value={bucket.set_value !== undefined ? bucket.set_value : "0"}
-                        type='number'
-                        inputMode="numeric"
-                        name="set_value"
-                        onChange={(e) => handlePresetValueChange(e, bucket.id)}
-                        onFocus={() => {
-                            setIsKeyboardVisible(true);
-                            setSelectedBucketId(bucket.id);
-                        }}
-                        disabled={bucket.count >= bucket.set_value}
-                        className='poppins-regular bold' /></span>
-                </div>
-            </Bucket>
-        )
-    })
+  //states for refilling
+  const [refillingMode, setRefillingMode] = useState(false);
+  const refillingModeRef = useRef(refillingMode);
+  const [keyboardValue, setKeyboardValue] = useState(0);
 
-    //handle input change for the set value of the bucket
-    function handlePresetValueChange(event, id) {
-        const { value } = event.target
-        const numericValue = value === "" ? 0 : parseInt(value, 10)
-        setBuckets(prevBuckets => prevBuckets.map(bucket =>
-            bucket.id === id ? { ...bucket, set_value: numericValue } : bucket
-        ))
+  // keep the ref in sync with state
+  useEffect(() => {
+    selectedBucketRef.current = selectedBucket;
+  }, [selectedBucket]);
+
+  useEffect(() => {
+    refillingModeRef.current = refillingMode;
+  }, [refillingMode]);
+
+  // keep these refs in sync with their states
+  useEffect(() => {
+    activeBucketRef.current       = activeBucket;
+    filledBucketsCountRef.current = filledBucketsCount;
+  }, [activeBucket, filledBucketsCount]);
+
+  useEffect(() => {
+    if (!isStreaming) return;
+
+    //update refs
+    activeBucketRef.current = activeBucket;
+    filledBucketsCountRef.current = filledBucketsCount;
+
+    // Create a WebSocket connection
+    ws.current = new WebSocket("ws://localhost:8000/ws");
+
+    //send start message to server once the connection is open
+    ws.current.onopen = () => {
+      console.log("WebSocket connection opened");
+      ws.current.send('start');
     }
 
-    // Handle input from the virtual keyboard
-    const handleKeyboardInput = (input) => {
-        if (selectedBucketId !== null) {
-            setBuckets(prevBuckets => prevBuckets.map(bucket => {
-                if (bucket.id === selectedBucketId) {
-                    const newValueString = input;
-                    const newValue = newValueString === "" ? 0 : parseInt(newValueString, 10);
-                    return { ...bucket, set_value: newValue };
-                }
-                return bucket;
-            }));
+    // Handle incoming messages
+    ws.current.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setTotalCoconutCount(data.count);
+      setImgSrc(`data:image/jpeg;base64,${data.frame}`); // Assuming the server sends a base64 encoded image
+
+      const active = activeBucketRef.current;
+      const filledCount = filledBucketsCountRef.current;
+      const isRefill = refillingModeRef.current;
+      const sel = selectedBucketRef.current;
+
+      setBuckets(prevBuckets => {
+        let newActiveBucket = active;
+        const updatedBuckets = prevBuckets.map(bucket => {
+          if (bucket.id === active) {
+            let newCount = data.count - filledCount; // Calculate the new count for the active bucket
+            //check if the newCount reached the set value of active bucket
+            if (!refillingMode && newCount >= bucket.set_value) {
+              newActiveBucket = newActiveBucket < prevBuckets.length ? bucket.id + 1 : newActiveBucket; // Move to the next bucket
+            }
+
+            prevBuckets.forEach(b => {
+              if (b.id === newActiveBucket && isRefill && sel != null) {
+                newActiveBucket = sel;
+              }
+            });
+
+            if (bucket.id === buckets.length && newCount >= bucket.set_value) {
+              setRefillingMode(true);
+            }
+            return { ...bucket, count: newCount }; //update the active bucket
+          }
+          return bucket; //return the rest of the buckets unchanged
+        });
+
+        // update active bucket
+        if (newActiveBucket !== active) {
+          setActiveBucket(newActiveBucket);
+          activeBucketRef.current = newActiveBucket;
+
+          setFilledBucketsCount(() => {
+            if(!isRefill){
+              // if in intial loading, count the coconuts in filled buckets
+              const newFilled = updatedBuckets
+                .filter(bucket => bucket.id < newActiveBucket)
+                .reduce((sum, bucket) => sum + bucket.count, 0);
+              filledBucketsCountRef.current = newFilled;
+              return newFilled;
+            }else{
+              // if in refilling mode, count the coconuts in all the buckets before moving to this bucket
+              const newFilled = updatedBuckets.reduce((sum, bucket) => sum+bucket.count, 0) -  (updatedBuckets[newActiveBucket - 1].count);
+              return newFilled;
+            }
+          });
+        }
+
+        return updatedBuckets;
+      })
+    }
+
+    return () => {
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.send("stop");
+        ws.current.close();
+      }
+      ws.current = null; // Close the WebSocket connection when the component unmounts
+    }
+  }, [isStreaming])
+
+  //start stop function
+  const handleStartStop = () => {
+    setIsStreaming(!isStreaming);
+    setRefillingMode(false);
+  }
+
+  //reset function
+  const handleReset = () => {
+    if (!window.confirm("Are you sure you want to reset all data?")) {
+      return;
+    }
+
+    // 1) Stop streaming & tell server to reset its counter
+    if (isStreaming && ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send("stop");
+      ws.current.send("reset");
+      ws.current.close();
+    }
+    setIsStreaming(false);
+
+    // 2) Reset all React state
+    setTotalCoconutCount(0);
+    setImgSrc("");
+    setBuckets(Array.from(
+      { length: 14 },
+      (_, i) => ({ id: i + 1, count: 0, set_value: 2 })
+    ));
+    setActiveBucket(1);
+    setFilledBucketsCount(0);
+    setRefillingMode(false);
+    setIsKeyboardVisible(false);
+    setSelectedBucket(null);
+
+    // 3) Reset refs to match
+    activeBucketRef.current = 1;
+    filledBucketsCountRef.current = 0;
+    refillingModeRef.current = false;
+    selectedBucketRef.current = null;
+  };
+
+
+  //keyboard function
+  const closeKeyboard = () => {
+    setIsKeyboardVisible(false);
+  }
+
+  const handleKeyboardInput = (input) => {
+    const newValue = parseInt(input) ? parseInt(input) : 0;
+    setKeyboardValue(newValue);
+  }
+
+  const handleKeyboardChange = () => {
+    if (selectedBucket !== null) { //if a bucket is selected
+      setBuckets(prevBuckets => prevBuckets.map(bucket => {
+        if (bucket.id === selectedBucket) {
+          return { ...bucket, set_value: keyboardValue }
+        }
+        return bucket;
+      }))
+    } else { //if no bucket is selected, update set_value for all buckets
+      setBuckets(prevBuckets => prevBuckets.map(bucket => {
+        return { ...bucket, set_value: keyboardValue }
+      }))
+    }
+    setKeyboardValue(0);
+    setIsKeyboardVisible(false);
+  }
+
+  const handleKeyboardAdd = () => {
+    if(selectedBucket !== null) {
+      setBuckets(prevBuckets => prevBuckets.map(bucket => {
+        if (bucket.id === selectedBucket){
+          return { ...bucket, set_value: bucket.set_value + keyboardValue }
+        }
+        return bucket;
+      }))
+    }
+    setKeyboardValue(0);
+    setIsKeyboardVisible(false);
+  }
+
+  //creating set of buckets
+  const bucketElements = buckets.map(bucket => (
+    <Bucket
+      key={bucket.id}
+      id={bucket.id}
+      count={bucket.count}
+      set_value={bucket.set_value}
+      isFilled={bucket.count >= bucket.set_value}
+      isActive={bucket.id === activeBucket}
+      isSelected={bucket.id === selectedBucket}
+      handleClick={() => {
+        if(selectedBucket === bucket.id ){
+          setSelectedBucket(null);
+          setIsKeyboardVisible(false);
         }else{
-            setBuckets(prevBuckets => prevBuckets.map(bucket => ({...bucket, set_value : parseInt(input, 10) || 0})));
+          setSelectedBucket(bucket.id);
+          setIsKeyboardVisible(true);
         }
-    };
+      }}
+    />
+  ));
 
-    // Poll the backend for the current count every second only when the stream is active
-    useEffect(() => {
-        if (streamStarted) {
-            const countInterval = setInterval(async () => {
-                try {
-                    const response = await fetch("http://localhost:5000/current_count")
-                    const data = await response.json();
-                    const currentTotal = data.count
-                    setTotalCount(currentTotal) //update the total count
+  // console.log("refillingtMode", refillingMode, "| Selected Bucket", selectedBucket, "| Active Bucket", activeBucket);
+  console.log("filled buckets count", filledBucketsCountRef.current);
 
-                    //set the count of the active bucket
-                    setBuckets(prevBuckets => {
-                        let newActiveBucket = activeBucket
-                        //creating the new bucket array with the updated count
-                        const updated = prevBuckets.map((bucket, index) => {
-                            //only modify the active bucket
-                            if (index === activeBucket) {
-                                let newCount = currentTotal - filledBucketsCount //calculate the count of the active bucket
-                                //check if the newCount reached the set value of the bucket
-                                if (newCount >= bucket.set_value) {
-                                    newActiveBucket = activeBucket < prevBuckets.length - 1 ? activeBucket + 1 : 0 //switch to the next bucket or the first bucket
-                                }
-                                return { ...bucket, count: newCount } //update the count of the active bucket
-                            }
-                            return bucket //return the bucket as it is
-                        })
-
-                        //check if all buckets are filled: completion condition
-                        const allFilled = updated.every(bucket => bucket.count >= bucket.set_value)
-                        if (allFilled) {
-                            setStreamStarted(false) //all buckets are filled. Stop the stream
-                        } else if (newActiveBucket !== activeBucket) {
-                            setActiveBucket(newActiveBucket) //update the active bucket
-                            console.log("Switching to bucket", newActiveBucket + 1)
-                            //stop the conveyor belt and update the filled buckets count
-                            fetch("http://localhost:5000/stop_conveyor", {
-                                method: "POST",
-                            }).catch(error => console.error("Error stopping conveyor:", error))
-
-                            setFilledBucketsCount(prevVal => {
-                                let currentTotal = 0
-                                for (let i = 0; i < newActiveBucket; i++) {
-                                    currentTotal += prevBuckets[i].set_value
-                                }
-                                return currentTotal //All the coconuts counted so far in filled buckets
-                            })
-                        }
-                        return updated //return the updated bucket array to buckets state
-                    })
-
-                } catch (error) {
-                    console.error("Error fetching count:", error);
-                }
-            }, 1000)
-            return () => clearInterval(countInterval)
-        }
-    }, [streamStarted, activeBucket])
-
-    return (
-        <div className="App">
-            <header>
-                <h1 className='poppins-extrabold'>Coconut Counter</h1>
-                <nav>
-                    <button onClick={() => setIsKeyboardVisible(true)} className='poppins-regular button set'>Set All</button>
-                    <button onClick={toggleCounting} className='poppins-regular button'>
-                        {streamStarted ? "Stop Counting" : "Start Counting"}
-                    </button>
-                    <button onClick={resetCount} className='poppins-regular button reset'>Reset Count</button>
-                </nav>
-            </header>
-            <div className='main-container'>
-                <div className='action-side'>
-                    {isKeyboardVisible && (
-                        <div>
-                            <button
-                                className='close-keyboard'
-                                onClick={() => {
-                                    setIsKeyboardVisible(false)
-                                    setSelectedBucketId(null);
-                                }}
-                            >
-                                ✖
-                            </button>
-                            <Keyboard
-                                layout={{
-                                    default: ['1 2 3', '4 5 6', '7 8 9', '0 {bksp}']
-                                }}
-                                onChange={handleKeyboardInput}
-                                inputName="set_value" // You can use a generic name here
-                            />
-                        </div>
-                    )}
-                    {streamStarted && (
-                        <div className='video-feed-container'>
-                            <div className='video-feed-overlay'>
-                                <img
-                                    id="video-feed"
-                                    src="http://localhost:5000/video_feed"
-                                    alt="Video Stream"
-                                    style={{ width: '640px', height: '480px', border: '1px solid #ccc' }}
-                                />
-                            </div>
-                            <div className='poppins-regular'>
-                                <h2>Total Coconuts: {totalCount}</h2>
-                                <h3>Active Bucket: {buckets[activeBucket + 1] && buckets[activeBucket].id}</h3>
-                            </div>
-                        </div>
-                    )}
-                </div>
-                <div className='bucket-container'>
-                    {bucketElements}
-                </div>
-            </div>
+  return (
+    <>
+      <header>
+        <h1>Coconut Counter</h1>
+        <nav>
+          <button className="startBtn" onClick={handleStartStop} >{isStreaming ? "Stop" : "Start"}</button>
+          <button className="setBtn" onClick={() => {
+            setIsKeyboardVisible(!isKeyboardVisible)
+            setSelectedBucket(null);
+          }}>Set All</button>
+          <button className="finishButton">Finish</button>
+          <button className="resetBtn" onClick={handleReset}>Reset</button>
+        </nav>
+      </header>
+      <div className="main_container">
+        <div className="video_container">
+          {isKeyboardVisible &&
+            <KeyboardComponent
+              handleInput={handleKeyboardInput}
+              handleClose={() => closeKeyboard()}
+              value={keyboardValue}
+              handleChange={handleKeyboardChange}
+              handleAdd={handleKeyboardAdd}
+            />}
+          <h2>Total Coconuts: {totalCoconutCount}</h2>
+          <h2>Active Bucket: {activeBucket}</h2>
+          {imgSrc && <img className="video_frame" src={imgSrc} alt="Conveyor Video Stream" />}
         </div>
-    )
+        <div className="buckets_container">
+          {bucketElements}
+        </div>
+      </div>
+    </>
+  )
+
 }
