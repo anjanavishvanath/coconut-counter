@@ -11,7 +11,7 @@ export default function App() {
   const [isStreaming, setIsStreaming] = useState(false);
 
   //initializing bucket related states
-  const [buckets, setBuckets] = useState(Array.from({ length: 14 }, (_, i) => ({ id: i + 1, count: 0, set_value: 2 })));
+  const [buckets, setBuckets] = useState(Array.from({ length: 3 }, (_, i) => ({ id: i + 1, count: 0, set_value: 2 })));
   const [activeBucket, setActiveBucket] = useState(buckets[0].id);
   const [filledBucketsCount, setFilledBucketsCount] = useState(0);
   const activeBucketRef = useRef(activeBucket);
@@ -151,7 +151,7 @@ export default function App() {
     setTotalCoconutCount(0);
     setImgSrc("");
     setBuckets(Array.from(
-      { length: 14 },
+      { length: 3 },
       (_, i) => ({ id: i + 1, count: 0, set_value: 2 })
     ));
     setActiveBucket(1);
@@ -230,8 +230,24 @@ export default function App() {
     />
   ));
 
+  //Finish button functionality
+  const handleFinish = async () => {
+    try {
+      const payload = { buckets };
+      const res = await fetch ("http://localhost:8000/save_report", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      })
+    }catch (err) {
+      console.error("Error saving report:", err);
+    }
+  };
+
   // console.log("refillingtMode", refillingMode, "| Selected Bucket", selectedBucket, "| Active Bucket", activeBucket);
-  console.log("filled buckets count", filledBucketsCountRef.current);
+  // console.log("filled buckets count", filledBucketsCountRef.current);
 
   return (
     <>
@@ -243,7 +259,7 @@ export default function App() {
             setIsKeyboardVisible(!isKeyboardVisible)
             setSelectedBucket(null);
           }}>Set All</button>
-          <button className="finishButton">Finish</button>
+          <button className="finishButton" onClick={handleFinish}>Finish</button>
           <button className="resetBtn" onClick={handleReset}>Reset</button>
         </nav>
       </header>

@@ -1,11 +1,24 @@
 import cv2
 import math
 import asyncio
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import base64
-import json
+
+# Libraries for reports
+import csv
+from datetime import datetime
+from pathlib import Path
+from typing import List
+from pydantic import BaseModel
+
+# Libraries for email
+from dotenv import load_dotenv
+import os
+import smtplib
+from email.message import EmailMessage
+
 
 class VideoStreamer:
     def __init__(self):
@@ -133,15 +146,56 @@ class VideoStreamer:
         cv2.destroyAllWindows()
         print("Video capture released and windows destroyed.")
 
-app = FastAPI()
+# ─── load .env ─────────────────────────────────────────────────────
+load_dotenv()
+# Data is pulled from a .env file in the same directory as this script.
+SMTP_HOST     = os.getenv("SMTP_HOST")
+SMTP_PORT     = int(os.getenv("SMTP_PORT", 587))   # typically 587 or 465
+SMTP_USER     = os.getenv("SMTP_USER")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+EMAIL_FROM    = os.getenv("EMAIL_FROM")
+EMAIL_TO      = os.getenv("EMAIL_TO")
 
+# ─── fastapi setup ─────────────────────────────────────────────────
+app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+#─── Pydantic model for your payload ────────────────────────────────
+class BucketReport(BaseModel):
+    id: int
+    set_value: int
+    count: int
+
+class ReportPayload(BaseModel):
+    buckets: List[BucketReport]
+
+# ─── helper to send email ───────────────────────────────────────────
+def send_report_email(report_path: Path):
+    msg = EmailMessage()
+    msg["Subject"] = f"Coconut Report {datetime.now():%Y-%m-%d %H:%M:%S}"
+    msg["From"]    = EMAIL_FROM
+    msg["To"]      = EMAIL_TO
+    msg.set_content("Please find attached the latest coconut count report.")
+    with report_path.open("rb") as f:
+        data = f.read()
+    msg.add_attachment(data, maintype="text", subtype="csv", filename=report_path.name)
+
+    # implicit SSL on 465, STARTTLS on others (e.g. 587)
+    if SMTP_PORT == 465:
+        smtp = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT)
+    else:
+        smtp = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
+        smtp.starttls()
+
+    smtp.login(SMTP_USER, SMTP_PASSWORD)
+    smtp.send_message(msg)
+    smtp.quit()
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -162,15 +216,36 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"Connection closed: {e}")
     finally:
         video_streamer.stop_streaming()
+        await websocket.close() #check if this is needed
+
+@app.post("/save_report")
+async def save_report(payload: ReportPayload, background_tasks: BackgroundTasks):
+    """
+    Accepts JSON { buckets: [ {id, set_value, count}, … ] }
+    Appends one timestamped row to reports.csv.
+    """
+    report_file = Path(__file__).parent / "reports.csv"
+    try:
+        report_file.parent.mkdir(parents=True, exist_ok=True)
+        with report_file.open("a", newline="") as csvfile:
+            writer = csv.writer(csvfile)
+            # write header if file was empty
+            if csvfile.tell() == 0:
+                header = ["timestamp"]
+                header += [f"bucket{b.id}_count" for b in payload.buckets]
+                writer.writerow(header)
+            # write data row
+            now = datetime.now().isoformat(sep=" ", timespec="seconds")
+            row = [now] + [b.count for b in payload.buckets]
+            writer.writerow(row)
+    except Exception as e:
+        # return a JSON 500 (with CORS headers!)
+        raise HTTPException(status_code=500, detail=f"Could not write report: {e}")
     
-    
-    # video_streamer = VideoStreamer()
-    # try:
-    #     await video_streamer.video_stream(websocket)
-    # except Exception as e:
-    #     print(f"Connection closed: {e}")
-    # finally:
-    #     video_streamer.stop_streaming()
+    # schedule the email to be sent in the background
+    background_tasks.add_task(send_report_email, report_file)
+
+    return {"status": "ok", "saved_to": str(report_file)}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="localhost", port=8000)
