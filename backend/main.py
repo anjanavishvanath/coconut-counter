@@ -26,8 +26,8 @@ import time
 
 # ─── GPIO setup ─────────────────────────────────────────────────────
 # BCM pin numbers
-START_BUTTON_PIN = 27
-CONVEYOR_RELAY_PIN = 17
+START_BUTTON_PIN = 16
+CONVEYOR_RELAY_PIN = 23
 
 # Claim the relay pin as an output (default low/off)
 lgpio.gpio_claim_output(chip, CONVEYOR_RELAY_PIN)
