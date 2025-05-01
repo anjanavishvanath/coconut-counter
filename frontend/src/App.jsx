@@ -73,10 +73,19 @@ export default function App() {
         let newActiveBucket = active;
         const updatedBuckets = prevBuckets.map(bucket => {
           if (bucket.id === active) {
-            let newCount = data.count - filledCount; // Calculate the new count for the active bucket
+            let newCount = 0;
+            if (data.count) {
+              newCount = data.count - filledCount; // Calculate the new count for the active bucket
+            } 
             //check if the newCount reached the set value of active bucket
             if (!refillingMode && newCount >= bucket.set_value) {
               newActiveBucket = newActiveBucket < prevBuckets.length ? bucket.id + 1 : newActiveBucket; // Move to the next bucket
+            }
+
+            //stop the conveyor when a bucket is full
+            if(newCount >= bucket.set_value){
+              console.log("Bucket is full, stopping conveyor...");
+              ws.current.send("bucket_full");
             }
 
             prevBuckets.forEach(b => {
@@ -88,6 +97,7 @@ export default function App() {
             if (bucket.id === buckets.length && newCount >= bucket.set_value) {
               setRefillingMode(true);
             }
+            console.log("incoming data", data.count, "newCount", newCount);
             return { ...bucket, count: newCount }; //update the active bucket
           }
           return bucket; //return the rest of the buckets unchanged
@@ -129,6 +139,7 @@ export default function App() {
 
   //start stop function
   const handleStartStop = () => {
+    isStreaming ? filledBucketsCountRef.current = 0 : null; //reset the filled buckets count when starting the stream
     setIsStreaming(!isStreaming);
     setRefillingMode(false);
   }

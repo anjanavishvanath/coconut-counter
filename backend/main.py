@@ -19,7 +19,43 @@ import os
 import smtplib
 from email.message import EmailMessage
 
+# GPIO libraries
+import lgpio
+import threading
+import time
 
+# ─── GPIO setup ─────────────────────────────────────────────────────
+# BCM pin numbers
+START_BUTTON_PIN = 27
+CONVEYOR_RELAY_PIN = 17
+
+# Claim the relay pin as an output (default low/off)
+lgpio.gpio_claim_output(chip, CONVEYOR_RELAY_PIN)
+lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+
+# Open the GPIO chip (always 0 on Pi)
+chip = lgpio.gpiochip_open(0)
+
+# Claim the button pin as an input with pull-up enabled
+lgpio.gpio_claim_input(chip, START_BUTTON_PIN, lgpio.GPIOD_PULL_UP)
+
+# spawn a background thread to monitor the button state
+def monitor_start_button():
+    last_state = 1
+    while True:
+        state = lgpio.gpio_read(chip, START_BUTTON_PIN)
+        #button is pulled up (1) when not pressed
+        if state == 0 and last_state == 1:
+            # Button pressed, start the conveyor
+            lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+            print("Button pressed, starting conveyor...")
+            time.sleep(0.5)
+        last_state = state
+
+# run as a daemon so it stops when your app exits
+threading.Thread(target=monitor_start_button, daemon=True).start()
+
+# ─── Video Processing Classes ────────────────────────────────────────
 class VideoStreamer:
     def __init__(self):
         self.current_count = 0
@@ -197,6 +233,7 @@ def send_report_email(report_path: Path):
     smtp.send_message(msg)
     smtp.quit()
 
+# ─── Websocket functions ──────────────────────────────────────────
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -210,14 +247,19 @@ async def websocket_endpoint(websocket: WebSocket):
             elif data == "stop":
                 video_streamer.stop_streaming()
                 break
+            elif data == "/bucket_full":
+                # operator wants to stop when a bucket fills
+                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+                print("Conveyor stopped: bucket full")
+                # return {"message": "Conveyor stopped: bucket full"}
             elif data == "reset":
                 video_streamer.reset() #reset the count
     except Exception as e:
         print(f"Connection closed: {e}")
     finally:
         video_streamer.stop_streaming()
-        await websocket.close() #check if this is needed
 
+# ─── HTTP functions ──────────────────────────────────────────────
 @app.post("/save_report")
 async def save_report(payload: ReportPayload, background_tasks: BackgroundTasks):
     """

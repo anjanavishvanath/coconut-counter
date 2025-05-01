@@ -6,4 +6,4 @@ __pycache__/
 backend/__pycache__/
 backend/.env
 backend/venv/
-
+backend/reports.csv
