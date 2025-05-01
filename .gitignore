@@ -7,3 +7,4 @@ backend/__pycache__/
 backend/.env
 backend/venv/
 backend/reports.csv
+backend/main_temp.py

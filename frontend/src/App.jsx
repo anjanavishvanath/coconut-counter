@@ -11,7 +11,7 @@ export default function App() {
   const [isStreaming, setIsStreaming] = useState(false);
 
   //initializing bucket related states
-  const [buckets, setBuckets] = useState(Array.from({ length: 3 }, (_, i) => ({ id: i + 1, count: 0, set_value: 2 })));
+  const [buckets, setBuckets] = useState(Array.from({ length: 14 }, (_, i) => ({ id: i + 1, count: 0, set_value: 2 })));
   const [activeBucket, setActiveBucket] = useState(buckets[0].id);
   const [filledBucketsCount, setFilledBucketsCount] = useState(0);
   const activeBucketRef = useRef(activeBucket);
@@ -162,7 +162,7 @@ export default function App() {
     setTotalCoconutCount(0);
     setImgSrc("");
     setBuckets(Array.from(
-      { length: 3 },
+      { length: 14 },
       (_, i) => ({ id: i + 1, count: 0, set_value: 2 })
     ));
     setActiveBucket(1);

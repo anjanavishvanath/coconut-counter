@@ -29,15 +29,15 @@ import time
 START_BUTTON_PIN = 16
 CONVEYOR_RELAY_PIN = 23
 
+# Open the GPIO chip (always 0 on Pi)
+chip = lgpio.gpiochip_open(0)
+
 # Claim the relay pin as an output (default low/off)
 lgpio.gpio_claim_output(chip, CONVEYOR_RELAY_PIN)
 lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
 
-# Open the GPIO chip (always 0 on Pi)
-chip = lgpio.gpiochip_open(0)
-
 # Claim the button pin as an input with pull-up enabled
-lgpio.gpio_claim_input(chip, START_BUTTON_PIN, lgpio.GPIOD_PULL_UP)
+lgpio.gpio_claim_input(chip, START_BUTTON_PIN, lgpio.SET_PULL_UP)
 
 # spawn a background thread to monitor the button state
 def monitor_start_button():
@@ -150,11 +150,12 @@ class VideoStreamer:
         return roi
 
     async def video_stream(self, websocket: WebSocket):
-        self.cap = cv2.VideoCapture('../videos/vid4.mp4')
+        self.cap = cv2.VideoCapture(0) #../videos/vid4.mp4
         self.reset()
         try:
             while self.cap.isOpened():
                 ret, frame = self.cap.read()
+                frame = cv2.resize(frame, (320, 240))
                 if not ret:
                     break
 
@@ -168,7 +169,7 @@ class VideoStreamer:
                     "frame": jpg_as_text
                 })
                 
-                await asyncio.sleep(1/30)  # Control FPS (30 fps)
+                await asyncio.sleep(1/24)  # Control FPS (30 fps)
                 
         except Exception as e:
             print(f"Error in video stream: {e}")
@@ -179,7 +180,7 @@ class VideoStreamer:
         self.processing = False
         if self.cap:
             self.cap.release()
-        cv2.destroyAllWindows()
+        
         print("Video capture released and windows destroyed.")
 
 # ─── load .env ─────────────────────────────────────────────────────
