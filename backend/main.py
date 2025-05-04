@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 import os
 import smtplib
 from email.message import EmailMessage
-'''
+
 # GPIO libraries
 import lgpio
 import threading
@@ -55,7 +55,7 @@ def monitor_start_button():
 
 # run as a daemon so it stops when your app exits
 threading.Thread(target=monitor_start_button, daemon=True).start()
-'''
+
 # ─── Video Processing Classes ────────────────────────────────────────
 class VideoStreamer:
     def __init__(self):
@@ -66,7 +66,7 @@ class VideoStreamer:
         # Color threshold for contours (tuned for brown coconuts)
         self.lower_brown = (8, 50, 50)
         self.upper_brown = (30, 255, 255)
-        self.min_contour_area = 2500
+        self.min_contour_area = 1250 # 2500 for application
 
         # Tracker parameters
         self.tracked_objects = {}
@@ -75,7 +75,7 @@ class VideoStreamer:
         self.max_disappeared = 5
 
         # Trigger line coordinates
-        self.trigger_line_x = 428
+        self.trigger_line_x = 190 # 190 for webcam, 428 for application
 
         self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 50]
 
@@ -146,10 +146,10 @@ class VideoStreamer:
                 self.current_count += 1
                 data["counted"] = True
             cv2.circle(roi, (cx, cy), 4, (0, 0, 255), -1)
-            cv2.putText(roi, str(object_id), (cx - 10, cy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+            cv2.putText(roi, str(object_id), (cx - 10, cy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
 
         cv2.line(roi, (self.trigger_line_x, 0), (self.trigger_line_x, roi.shape[0]), (0, 0, 255), 2)
-        cv2.putText(roi, f"Coconuts: {self.current_count}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        cv2.putText(roi, f"Coconuts: {self.current_count}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
         return roi
 
     async def video_stream(self, websocket: WebSocket):
@@ -157,8 +157,9 @@ class VideoStreamer:
         self.reset()
         try:
             while self.cap.isOpened():
-                ret, frame = self.cap.read()
-                # frame = cv2.resize(frame, (320, 240))
+                ret, frame = self.cap.read() 
+                # frame.shape == (480, 640, 3) for webcam
+                frame = cv2.resize(frame, (320, 240))
                 if not ret:
                     break
 
@@ -172,7 +173,7 @@ class VideoStreamer:
                 # send a single binary frame: [4-byte count][jpeg…]
                 await websocket.send_bytes(count_header + jpg_bytes)
                 
-                await asyncio.sleep(1/24)  # Control FPS (15 fps)
+                await asyncio.sleep(1/24)  # Control FPS (24 fps)
                 
         except Exception as e:
             print(f"Error in video stream: {e}")
@@ -253,7 +254,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 break
             elif data == "/bucket_full":
                 # operator wants to stop when a bucket fills
-                # lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
                 print("Conveyor stopped: bucket full")
                 # return {"message": "Conveyor stopped: bucket full"}
             elif data == "reset":
