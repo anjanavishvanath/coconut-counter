@@ -172,7 +172,7 @@ class VideoStreamer:
                 # send a single binary frame: [4-byte count][jpeg…]
                 await websocket.send_bytes(count_header + jpg_bytes)
                 
-                await asyncio.sleep(1/15)  # Control FPS (15 fps)
+                await asyncio.sleep(1/24)  # Control FPS (15 fps)
                 
         except Exception as e:
             print(f"Error in video stream: {e}")
