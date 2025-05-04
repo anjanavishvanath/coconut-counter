@@ -153,7 +153,7 @@ class VideoStreamer:
         return roi
 
     async def video_stream(self, websocket: WebSocket):
-        self.cap = cv2.VideoCapture('../videos/vid4.mp4') #../videos/vid4.mp4
+        self.cap = cv2.VideoCapture(0) #../videos/vid4.mp4
         self.reset()
         try:
             while self.cap.isOpened():
