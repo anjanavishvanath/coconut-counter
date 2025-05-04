@@ -4,7 +4,8 @@ import asyncio
 from fastapi import FastAPI, WebSocket, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-import base64
+# import base64
+import struct
 
 # Libraries for reports
 import csv
@@ -18,7 +19,7 @@ from dotenv import load_dotenv
 import os
 import smtplib
 from email.message import EmailMessage
-
+'''
 # GPIO libraries
 import lgpio
 import threading
@@ -54,7 +55,7 @@ def monitor_start_button():
 
 # run as a daemon so it stops when your app exits
 threading.Thread(target=monitor_start_button, daemon=True).start()
-
+'''
 # ─── Video Processing Classes ────────────────────────────────────────
 class VideoStreamer:
     def __init__(self):
@@ -75,6 +76,8 @@ class VideoStreamer:
 
         # Trigger line coordinates
         self.trigger_line_x = 428
+
+        self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 50]
 
     def reset(self):
         self.current_count = 0
@@ -150,26 +153,26 @@ class VideoStreamer:
         return roi
 
     async def video_stream(self, websocket: WebSocket):
-        self.cap = cv2.VideoCapture(0) #../videos/vid4.mp4
+        self.cap = cv2.VideoCapture('../videos/vid4.mp4') #../videos/vid4.mp4
         self.reset()
         try:
             while self.cap.isOpened():
                 ret, frame = self.cap.read()
-                frame = cv2.resize(frame, (320, 240))
+                # frame = cv2.resize(frame, (320, 240))
                 if not ret:
                     break
 
                 processed_frame = self.process_frame(frame)
-                _, buffer = cv2.imencode('.jpg', processed_frame)
-                jpg_as_text = base64.b64encode(buffer).decode('utf-8')
+                _, buffer = cv2.imencode('.jpg', processed_frame, self.encode_param)
                 
-                # Send both count and frame as JSON
-                await websocket.send_json({
-                    "count": self.current_count,
-                    "frame": jpg_as_text
-                })
+                jpg_bytes = buffer.tobytes()
+                #pack the 32 bit count as a 4 byte binary string
+                count_header = struct.pack("!I", self.current_count)
+
+                # send a single binary frame: [4-byte count][jpeg…]
+                await websocket.send_bytes(count_header + jpg_bytes)
                 
-                await asyncio.sleep(1/24)  # Control FPS (30 fps)
+                await asyncio.sleep(1/15)  # Control FPS (15 fps)
                 
         except Exception as e:
             print(f"Error in video stream: {e}")
@@ -250,7 +253,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 break
             elif data == "/bucket_full":
                 # operator wants to stop when a bucket fills
-                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+                # lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
                 print("Conveyor stopped: bucket full")
                 # return {"message": "Conveyor stopped: bucket full"}
             elif data == "reset":
