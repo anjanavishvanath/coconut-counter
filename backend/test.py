@@ -19,6 +19,7 @@ try:
     lgpio.gpio_set_pulll_up_down(chip, START_BUTTON_PIN, lgpio.PULL_UP)
 
     def button_callback(handle, gpio, edge, tick):
+        print("Button pressed")
         if edge == lgpio.FALLING_EDGE:
             lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)  # Turn on the conveyor relay
         elif edge == lgpio.RISING_EDGE:
