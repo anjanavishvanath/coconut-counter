@@ -147,10 +147,10 @@ class VideoStreamer:
                 self.current_count += 1
                 data["counted"] = True
             cv2.circle(roi, (cx, cy), 4, (0, 0, 255), -1)
-            cv2.putText(roi, str(object_id), (cx - 10, cy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
+            # cv2.putText(roi, str(object_id), (cx - 10, cy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
 
         cv2.line(roi, (self.trigger_line_x, 0), (self.trigger_line_x, roi.shape[0]), (0, 0, 255), 2)
-        cv2.putText(roi, f"Coconuts: {self.current_count}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+        # cv2.putText(roi, f"Coconuts: {self.current_count}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
         return roi
 
     async def video_stream(self, websocket: WebSocket):

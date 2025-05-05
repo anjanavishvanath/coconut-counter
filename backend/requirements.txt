@@ -3,4 +3,4 @@ lgpio==0.2.2.0
 opencv_python==4.11.0.86
 pydantic==2.11.4
 python-dotenv==1.1.0
-uvicorn==0.34.2
+uvicorn[standard]==0.34.2
