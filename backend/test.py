@@ -15,8 +15,7 @@ chip = lgpio.gpiochip_open(0)
 try:
     # Set up GPIO pins
     lgpio.gpio_claim_output(chip, CONVEYOR_RELAY_PIN, 0)
-    lgpio.gpio_claim_input(chip, START_BUTTON_PIN)
-    lgpio.gpio_set_pulll_up_down(chip, START_BUTTON_PIN, lgpio.PULL_UP)
+    lgpio.gpio_claim_input(chip, START_BUTTON_PIN, lgpio.SET_PULL_UP)
 
     def button_callback(handle, gpio, edge, tick):
         print("Button pressed")
