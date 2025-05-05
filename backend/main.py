@@ -26,6 +26,10 @@ import lgpio
 import RPi.GPIO as GPIO 
 import time
 
+# ─── Global asyncio event ───────────────────────────────────────────
+loop = asyncio.get_event_loop() #grab the running event loop
+start_event = asyncio.Event() # this event will be set when the start button is pressed
+
 # ─── GPIO setup ─────────────────────────────────────────────────────
 # BCM pin numbers
 START_BUTTON_PIN = 16
@@ -48,6 +52,7 @@ def start_button_pressed(channel):
     """Callback: button pressed → turn conveyor on."""
     print("Button pressed, starting conveyor…")
     lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+    loop.call_soon_threadsafe(start_event.set)  # # notify the WS handler that “start” has occurred
 
 def stop_button_pressed(channel):
     """Callback: button pressed → turn conveyor off."""
@@ -261,8 +266,29 @@ async def websocket_endpoint(websocket: WebSocket):
 
     try:
         while True:
-            data = await websocket.receive_text()
-            print(f"[WS] got message ➞ {data!r}")
+            # create two tasks: one to wait for client text, one to wait for button press
+            recv_task = asyncio.create_task(websocket.receive_text())
+            hw_task   = asyncio.create_task(start_event.wait())
+
+            done, pending = await asyncio.wait(
+                [recv_task, hw_task],
+                return_when=asyncio.FIRST_COMPLETED
+            )
+
+            # if hardware START fired:
+            if hw_task in done:
+                start_event.clear()   # reset it
+                data = "start"
+            else:
+                data = recv_task.result()
+
+            # cancel the other task
+            for t in pending:
+                t.cancel()
+                with suppress(asyncio.CancelledError):
+                    await t
+
+            print(f"[WS] got command ➞ {data!r}")
 
             if data == "start":
                 # launch streaming in background
@@ -281,15 +307,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 if data == "reset":
                     video_streamer.reset()
                     lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
-
-                # in all three cases, we want to shut down the streaming loop
-                video_streamer.stop_streaming()
-                if streaming_task and not streaming_task.done():
-                    streaming_task.cancel()
-                    # optionally await cancellation to silence warnings:
-                    with suppress(asyncio.CancelledError):
-                        await streaming_task
-                    streaming_task = None
 
                 if data == "stop":
                     break  # exit the outer loop, closing WS
