@@ -43,6 +43,7 @@ export default function App() {
     };
 
     ws.current.onmessage = (event) => {
+      console.log("[CLIENT] got WS message:", event.data);
       // Distinguish control messages (strings) from video frames (Blob)
       if (typeof event.data === "string") {
         switch (event.data) {

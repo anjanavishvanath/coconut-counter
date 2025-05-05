@@ -294,6 +294,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 # launch streaming in background
                 if streaming_task is None or streaming_task.done():
                     # let the client know we’re streaming now
+                    print("↗ sending 'started' to client")
                     await websocket.send_text("started")
                     lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
                     streaming_task = asyncio.create_task(
