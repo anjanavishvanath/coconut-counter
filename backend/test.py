@@ -20,7 +20,7 @@ try:
         StopState = lgpio.gpio_read(chip, STOP_BUTTON_PIN)
 
         print("Start Button State: ", startState, "Stop Button State: ", StopState)
-
+        time.sleep(10)
 except KeyboardInterrupt:
     pass
 finally:
