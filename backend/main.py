@@ -33,9 +33,9 @@ CONVEYOR_RELAY_PIN = 23
 # Open the GPIO chip (always 0 on Pi)
 chip = lgpio.gpiochip_open(0)
 
-# Claim the relay pin as an output (default low/off)
+# Claim the relay pin as an output (default HIGH/off)
 lgpio.gpio_claim_output(chip, CONVEYOR_RELAY_PIN)
-lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
 
 # Claim the button pin as an input with pull-up enabled
 lgpio.gpio_claim_input(chip, START_BUTTON_PIN, lgpio.SET_PULL_UP)
@@ -46,9 +46,10 @@ def monitor_start_button():
     while True:
         state = lgpio.gpio_read(chip, START_BUTTON_PIN)
         #button is pulled up (1) when not pressed
+        print(f"Button state: {state}, Last state: {last_state}")
         if state == 1 and last_state == 0:
             # Button pressed, start the conveyor
-            lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+            lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
             print("Button pressed, starting conveyor...")
             time.sleep(0.05)
         last_state = state
@@ -254,7 +255,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 break
             elif data == "/bucket_full":
                 # operator wants to stop when a bucket fills
-                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
                 print("Conveyor stopped: bucket full")
                 # return {"message": "Conveyor stopped: bucket full"}
             elif data == "reset":
