@@ -45,6 +45,19 @@ export default function App() {
     };
 
     ws.current.onmessage = (event) => {
+      // Distinguish control messages (strings) from video frames (Blob)
+      if (typeof event.data === "string") {
+        switch (event.data) {
+          case "started":
+            setIsStreaming(true);
+            break;
+          case "stopped":
+            setIsStreaming(false);
+            break;
+        }
+        return;
+      }
+
       // Read the incoming Blob as an ArrayBuffer
       const reader = new FileReader();
       reader.onload = () => {

@@ -293,11 +293,15 @@ async def websocket_endpoint(websocket: WebSocket):
             if data == "start":
                 # launch streaming in background
                 if streaming_task is None or streaming_task.done():
+                    # let the client know we’re streaming now
+                    await websocket.send_text("started")
                     streaming_task = asyncio.create_task(
                         video_streamer.video_stream(websocket)
                     )
 
             elif data in ("stop", "bucket_full", "reset"):
+                # notify client so it can update its UI
+                await websocket.send_text("stopped")
                 # stop the conveyor relay on bucket_full
                 if data == "bucket_full":
                     lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
