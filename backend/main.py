@@ -22,7 +22,7 @@ from email.message import EmailMessage
 
 # GPIO libraries
 import lgpio
-import threading
+import RPi.GPIO as GPIO 
 import time
 
 # ─── GPIO setup ─────────────────────────────────────────────────────
@@ -37,25 +37,23 @@ chip = lgpio.gpiochip_open(0)
 lgpio.gpio_claim_output(chip, CONVEYOR_RELAY_PIN)
 lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
 
-# Claim the button pin as an input with pull-up enabled
-lgpio.gpio_claim_input(chip, START_BUTTON_PIN, lgpio.SET_PULL_UP)
+# ─── RPi.GPIO setup for the button ────────────────────────────────────────
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(START_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-# spawn a background thread to monitor the button state
-def monitor_start_button():
-    last_state = 0
-    while True:
-        state = lgpio.gpio_read(chip, START_BUTTON_PIN)
-        #button is pulled up (1) when not pressed
-        print(f"Button state: {state}, Last state: {last_state}")
-        if state == 1 and last_state == 0:
-            # Button pressed, start the conveyor
-            lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
-            print("Button pressed, starting conveyor...")
-            time.sleep(0.05)
-        last_state = state
+def start_button_pressed(channel):
+    """Callback: button pressed → turn conveyor on."""
+    print("Button pressed, starting conveyor…")
+    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
 
-# run as a daemon so it stops when your app exits
-threading.Thread(target=monitor_start_button, daemon=True).start()
+# ─── Install a falling-edge interrupt with 200 ms debounce ─────────────────
+GPIO.add_event_detect(
+    START_BUTTON_PIN,
+    GPIO.FALLING,              # detect HIGH → LOW transitions
+    callback=start_button_pressed,
+    bouncetime=200             # debounce in milliseconds
+)
+
 
 # ─── Video Processing Classes ────────────────────────────────────────
 class VideoStreamer:
