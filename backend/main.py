@@ -260,12 +260,13 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             #wait for start command
             data = await websocket.receive_text()
+            print(f"[WS] got message ➞ {data!r}")
             if data == "start":
                 await video_streamer.video_stream(websocket)
             elif data == "stop":
                 video_streamer.stop_streaming()
                 break
-            elif data == "/bucket_full":
+            elif data == "bucket_full":
                 # operator wants to stop when a bucket fills
                 lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
                 print("Conveyor stopped: bucket full")
