@@ -42,17 +42,16 @@ lgpio.gpio_claim_input(chip, START_BUTTON_PIN, lgpio.SET_PULL_UP)
 
 # spawn a background thread to monitor the button state
 def monitor_start_button():
-    last_state = 1
+    last_state = 0
     while True:
         state = lgpio.gpio_read(chip, START_BUTTON_PIN)
-        if state == 0 and last_state == 1:
+        #button is pulled up (1) when not pressed
+        if state == 1 and last_state == 0:
+            # Button pressed, start the conveyor
             lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
             print("Button pressed, starting conveyor...")
-        elif state == 1 and last_state == 0:
-            lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
-            print("Button released, stopping conveyor...")
+            time.sleep(0.05)
         last_state = state
-        time.sleep(0.05)  # debounce delay
 
 # run as a daemon so it stops when your app exits
 threading.Thread(target=monitor_start_button, daemon=True).start()
