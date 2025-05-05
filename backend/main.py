@@ -102,7 +102,6 @@ class VideoStreamer:
         self.current_count = 0
         self.tracked_objects = {}
         self.next_object_id = 0
-        self.stop_streaming()
 
     def process_frame(self, frame):
         roi = frame.copy()
@@ -314,13 +313,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 if data == "reset":
                     video_streamer.reset()
                     lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
-                    print("Conveyor stopped: reset")
 
                 if data == "stop":
-                    # stop the video stream and close the connection
-                    video_streamer.stop_streaming()
-                    await websocket.close()
-                    print("WebSocket closed")
                     break  # exit the outer loop, closing WS
 
             else:
