@@ -24,7 +24,7 @@ try:
         elif edge == lgpio.RISING_EDGE:
             lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
 
-    cb = lgpio.callback(chip, START_BUTTON_PIN, lgpio.BOTH_EDGE, button_callback, debounce=50)
+    cb = lgpio.callback(chip, START_BUTTON_PIN, lgpio.BOTH_EDGES, button_callback, debounce=50)
 
     print("Press CTRL-C to exit")
     while True:
