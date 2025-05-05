@@ -28,6 +28,7 @@ import time
 # ─── GPIO setup ─────────────────────────────────────────────────────
 # BCM pin numbers
 START_BUTTON_PIN = 16
+STOP_BUTTON_PIN  = 12
 CONVEYOR_RELAY_PIN = 23
 
 # Open the GPIO chip (always 0 on Pi)
@@ -40,17 +41,30 @@ lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
 # ─── RPi.GPIO setup for the button ────────────────────────────────────────
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(START_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(STOP_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 def start_button_pressed(channel):
     """Callback: button pressed → turn conveyor on."""
     print("Button pressed, starting conveyor…")
     lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
 
+def stop_button_pressed(channel):
+    """Callback: button pressed → turn conveyor off."""
+    print("Button pressed, stopping conveyor…")
+    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+
 # ─── Install a falling-edge interrupt with 200 ms debounce ─────────────────
 GPIO.add_event_detect(
     START_BUTTON_PIN,
     GPIO.FALLING,              # detect HIGH → LOW transitions
     callback=start_button_pressed,
+    bouncetime=200             # debounce in milliseconds
+)
+
+GPIO.add_event_detect(
+    STOP_BUTTON_PIN,
+    GPIO.FALLING,              # detect HIGH → LOW transitions
+    callback=stop_button_pressed,
     bouncetime=200             # debounce in milliseconds
 )
 
@@ -258,6 +272,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 # return {"message": "Conveyor stopped: bucket full"}
             elif data == "reset":
                 video_streamer.reset() #reset the count
+                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
     except Exception as e:
         print(f"Connection closed: {e}")
     finally:
