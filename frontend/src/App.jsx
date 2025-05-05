@@ -39,7 +39,7 @@ export default function App() {
     ws.current.binaryType = "blob";
 
     ws.current.onopen = () => {
-      ws.current.send("start");
+      console.log("WS connected");
     };
 
     ws.current.onmessage = (event) => {
