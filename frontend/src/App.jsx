@@ -35,8 +35,6 @@ export default function App() {
   useEffect(() => { selectedBucketRef.current = selectedBucket; }, [selectedBucket]);
 
   useEffect(() => {
-    if (!isStreaming) return;
-
     ws.current = new WebSocket("ws://localhost:8000/ws");
     ws.current.binaryType = "blob";
 
@@ -51,9 +49,9 @@ export default function App() {
           case "started":
             setIsStreaming(true);
             break;
-          case "stopped":
-            setIsStreaming(false);
-            break;
+          // case "stopped":
+          //   setIsStreaming(false);
+          //   break;
         }
         return;
       }
@@ -112,8 +110,8 @@ export default function App() {
             // recalc filledBucketsCount
             const newFilled = !isRefill
               ? updated
-                  .filter((x) => x.id < newActive)
-                  .reduce((s, x) => s + x.count, 0)
+                .filter((x) => x.id < newActive)
+                .reduce((s, x) => s + x.count, 0)
               : updated.reduce((s, x) => s + x.count, 0) - updated[newActive - 1].count;
             setFilledBucketsCount(newFilled);
           }
@@ -131,6 +129,17 @@ export default function App() {
       }
       ws.current = null;
     };
+  }, []);
+
+  // watch for when the user uses the UI to toggle streaming
+  useEffect(() => {
+    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
+
+    if (isStreaming) {
+      ws.current.send("start");
+    } else {
+      ws.current.send("stop");
+    }
   }, [isStreaming]);
 
   const handleStartStop = () => {
