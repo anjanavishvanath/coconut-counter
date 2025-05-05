@@ -78,6 +78,7 @@ export default function App() {
               }
               // stop conveyor when full
               if (newCount >= b.set_value) {
+                console.log("Bucket full, stopping conveyor");
                 ws.current.send("bucket_full");
               }
               // refill mode: jump to selected bucket
