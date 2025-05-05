@@ -5,78 +5,75 @@ from contextlib import suppress
 from fastapi import FastAPI, WebSocket, HTTPException, BackgroundTasks, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+# import base64
 import struct
+
+# Libraries for reports
 import csv
 from datetime import datetime
 from pathlib import Path
 from typing import List
 from pydantic import BaseModel
+
+# Libraries for email
 from dotenv import load_dotenv
 import os
 import smtplib
 from email.message import EmailMessage
+
+# GPIO libraries
 import lgpio
-import RPi.GPIO as GPIO
+import RPi.GPIO as GPIO 
+import time
 
-# ─── Global placeholders ───────────────────────────────────────────
-loop = None
-start_event = None
+# ─── Global asyncio event ───────────────────────────────────────────
+loop = asyncio.get_event_loop() #grab the running event loop
+start_event = asyncio.Event() # this event will be set when the start button is pressed
 
-# ─── GPIO pins ──────────────────────────────────────────────────────
-START_BUTTON_PIN   = 16
-STOP_BUTTON_PIN    = 12
+# ─── GPIO setup ─────────────────────────────────────────────────────
+# BCM pin numbers
+START_BUTTON_PIN = 16
+STOP_BUTTON_PIN  = 12
 CONVEYOR_RELAY_PIN = 23
 
-# ─── Setup lgpio for relay ─────────────────────────────────────────
+# Open the GPIO chip (always 0 on Pi)
 chip = lgpio.gpiochip_open(0)
-lgpio.gpio_claim_output(chip, CONVEYOR_RELAY_PIN)
-lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)  # off
 
-# ─── FastAPI app & config ──────────────────────────────────────────
-app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+# Claim the relay pin as an output (default HIGH/off)
+lgpio.gpio_claim_output(chip, CONVEYOR_RELAY_PIN)
+lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+
+# ─── RPi.GPIO setup for the button ────────────────────────────────────────
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(START_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(STOP_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+def start_button_pressed(channel):
+    """Callback: button pressed → turn conveyor on."""
+    print("Button pressed, starting conveyor…")
+    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+    loop.call_soon_threadsafe(start_event.set)  # # notify the WS handler that “start” has occurred
+
+def stop_button_pressed(channel):
+    """Callback: button pressed → turn conveyor off."""
+    print("Button pressed, stopping conveyor…")
+    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+
+# ─── Install a falling-edge interrupt with 200 ms debounce ─────────────────
+GPIO.add_event_detect(
+    START_BUTTON_PIN,
+    GPIO.FALLING,              # detect HIGH → LOW transitions
+    callback=start_button_pressed,
+    bouncetime=200             # debounce in milliseconds
 )
 
-# ─── Pydantic models ────────────────────────────────────────────────
-class BucketReport(BaseModel):
-    id: int
-    set_value: int
-    count: int
+GPIO.add_event_detect(
+    STOP_BUTTON_PIN,
+    GPIO.FALLING,              # detect HIGH → LOW transitions
+    callback=stop_button_pressed,
+    bouncetime=200             # debounce in milliseconds
+)
 
-class ReportPayload(BaseModel):
-    buckets: List[BucketReport]
-
-# ─── Email/report helper ────────────────────────────────────────────
-load_dotenv()
-SMTP_HOST     = os.getenv("SMTP_HOST")
-SMTP_PORT     = int(os.getenv("SMTP_PORT", 587))
-SMTP_USER     = os.getenv("SMTP_USER")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-EMAIL_FROM    = os.getenv("EMAIL_FROM")
-EMAIL_TO      = os.getenv("EMAIL_TO")
-
-def send_report_email(report_path: Path):
-    msg = EmailMessage()
-    msg["Subject"] = f"Coconut Report {datetime.now():%Y-%m-%d %H:%M:%S}"
-    msg["From"]    = EMAIL_FROM
-    msg["To"]      = EMAIL_TO
-    msg.set_content("Please find attached the latest coconut count report.")
-    with report_path.open("rb") as f:
-        data = f.read()
-    msg.add_attachment(data, maintype="text", subtype="csv", filename=report_path.name)
-    if SMTP_PORT == 465:
-        smtp = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT)
-    else:
-        smtp = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
-        smtp.starttls()
-    smtp.login(SMTP_USER, SMTP_PASSWORD)
-    smtp.send_message(msg)
-    smtp.quit()
 
 # ─── Video Processing Classes ────────────────────────────────────────
 class VideoStreamer:
@@ -187,16 +184,16 @@ class VideoStreamer:
 
                 processed_frame = self.process_frame(frame)
                 _, buffer = cv2.imencode('.jpg', processed_frame, self.encode_param)
-
+                
                 jpg_bytes = buffer.tobytes()
                 #pack the 32 bit count as a 4 byte binary string
                 count_header = struct.pack("!I", self.current_count)
 
                 # send a single binary frame: [4-byte count][jpeg…]
                 await websocket.send_bytes(count_header + jpg_bytes)
-
+                
                 await asyncio.sleep(1/24)  # Control FPS (24 fps)
-
+                
         except Exception as e:
             print(f"Error in video stream: {e}")
         finally:
@@ -206,82 +203,160 @@ class VideoStreamer:
         self.processing = False
         if self.cap:
             self.cap.release()
-
+        
         print("Video capture released and windows destroyed.")
 
-# ─── Configure GPIO interrupts ──────────────────────────────────────
-def gpio_setup():
-    global loop, start_event
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(START_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-    GPIO.setup(STOP_BUTTON_PIN,  GPIO.IN, pull_up_down=GPIO.PUD_UP)
-    def _on_start(ch):
-        print("Button pressed, starting conveyor…")
-        lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
-        loop.call_soon_threadsafe(start_event.set)
-    GPIO.add_event_detect(START_BUTTON_PIN, GPIO.FALLING, callback=_on_start, bouncetime=200)
+# ─── load .env ─────────────────────────────────────────────────────
+load_dotenv()
+# Data is pulled from a .env file in the same directory as this script.
+SMTP_HOST     = os.getenv("SMTP_HOST")
+SMTP_PORT     = int(os.getenv("SMTP_PORT", 587))   # typically 587 or 465
+SMTP_USER     = os.getenv("SMTP_USER")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+EMAIL_FROM    = os.getenv("EMAIL_FROM")
+EMAIL_TO      = os.getenv("EMAIL_TO")
 
-# ─── FastAPI startup to bind loop & events ─────────────────────────
-@app.on_event("startup")
-async def on_startup():
-    global loop, start_event
-    loop = asyncio.get_running_loop()
-    start_event = asyncio.Event()
-    gpio_setup()
-    print("Server startup complete. GPIO and events initialized.")
+# ─── fastapi setup ─────────────────────────────────────────────────
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# ─── WebSocket endpoint ─────────────────────────────────────────────
+#─── Pydantic model for your payload ────────────────────────────────
+class BucketReport(BaseModel):
+    id: int
+    set_value: int
+    count: int
+
+class ReportPayload(BaseModel):
+    buckets: List[BucketReport]
+
+# ─── helper to send email ───────────────────────────────────────────
+def send_report_email(report_path: Path):
+    msg = EmailMessage()
+    msg["Subject"] = f"Coconut Report {datetime.now():%Y-%m-%d %H:%M:%S}"
+    msg["From"]    = EMAIL_FROM
+    msg["To"]      = EMAIL_TO
+    msg.set_content("Please find attached the latest coconut count report.")
+    with report_path.open("rb") as f:
+        data = f.read()
+    msg.add_attachment(data, maintype="text", subtype="csv", filename=report_path.name)
+
+    # implicit SSL on 465, STARTTLS on others (e.g. 587)
+    if SMTP_PORT == 465:
+        smtp = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT)
+    else:
+        smtp = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
+        smtp.starttls()
+
+    smtp.login(SMTP_USER, SMTP_PASSWORD)
+    smtp.send_message(msg)
+    smtp.quit()
+
+# ─── Websocket functions ──────────────────────────────────────────
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    streamer = VideoStreamer()
-    task = None
+    video_streamer = VideoStreamer()
+    streaming_task = None
+
     try:
         while True:
-            recv = asyncio.create_task(websocket.receive_text())
-            hw   = asyncio.create_task(start_event.wait())
-            done, pending = await asyncio.wait([recv, hw], return_when=asyncio.FIRST_COMPLETED)
-            if hw in done:
-                start_event.clear()
-                cmd = "start"
+            # create two tasks: one to wait for client text, one to wait for button press
+            recv_task = asyncio.create_task(websocket.receive_text())
+            hw_task   = asyncio.create_task(start_event.wait())
+
+            done, pending = await asyncio.wait(
+                [recv_task, hw_task],
+                return_when=asyncio.FIRST_COMPLETED
+            )
+
+            # if hardware START fired:
+            if hw_task in done:
+                start_event.clear()   # reset it
+                data = "start"
             else:
-                cmd = recv.result()
+                data = recv_task.result()
+
+            # cancel the other task
             for t in pending:
                 t.cancel()
                 with suppress(asyncio.CancelledError):
                     await t
-            print(f"[WS] cmd: {cmd!r}")
-            if cmd == "start":
-                if task is None or task.done():
+
+            print(f"[WS] got command ➞ {data!r}")
+
+            if data == "start":
+                # launch streaming in background
+                if streaming_task is None or streaming_task.done():
+                    # let the client know we’re streaming now
+                    print("↗ sending 'started' to client")
                     await websocket.send_text("started")
-                    task = asyncio.create_task(streamer.video_stream(websocket))
-            elif cmd in ("stop","bucket_full","reset"):
+                    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+                    streaming_task = asyncio.create_task(
+                        video_streamer.video_stream(websocket)
+                    )
+
+            elif data in ("stop", "bucket_full", "reset"):
+                # notify client so it can update its UI
                 await websocket.send_text("stopped")
-                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
-                if cmd == "reset":
-                    streamer.reset()
-                if task and not task.done():
-                    task.cancel()
-                    with suppress(asyncio.CancelledError): await task
-                if cmd == "stop": break
+                # stop the conveyor relay on bucket_full
+                if data == "bucket_full":
+                    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+                    print("Conveyor stopped: bucket full")
+
+                # reset count on reset
+                if data == "reset":
+                    video_streamer.reset()
+                    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+
+                if data == "stop":
+                    break  # exit the outer loop, closing WS
+
+            else:
+                print(f"[WS] Unknown command: {data!r}")
+
     except WebSocketDisconnect:
         print("Client disconnected")
     finally:
-        if task and not task.done(): task.cancel()
-        streamer.stop_streaming()
+        # ensure we clean up
+        if streaming_task and not streaming_task.done():
+            streaming_task.cancel()
+        video_streamer.stop_streaming()
 
-# ─── HTTP report endpoint ──────────────────────────────────────────
+# ─── HTTP functions ──────────────────────────────────────────────
 @app.post("/save_report")
 async def save_report(payload: ReportPayload, background_tasks: BackgroundTasks):
+    """
+    Accepts JSON { buckets: [ {id, set_value, count}, … ] }
+    Appends one timestamped row to reports.csv.
+    """
     report_file = Path(__file__).parent / "reports.csv"
-    with report_file.open("a", newline="") as csvfile:
-        writer = csv.writer(csvfile)
-        if csvfile.tell() == 0:
-            writer.writerow(["timestamp"] + [f"bucket{b.id}_count" for b in payload.buckets])
-        now = datetime.now().isoformat(sep=" ", timespec="seconds")
-        writer.writerow([now] + [b.count for b in payload.buckets])
+    try:
+        report_file.parent.mkdir(parents=True, exist_ok=True)
+        with report_file.open("a", newline="") as csvfile:
+            writer = csv.writer(csvfile)
+            # write header if file was empty
+            if csvfile.tell() == 0:
+                header = ["timestamp"]
+                header += [f"bucket{b.id}_count" for b in payload.buckets]
+                writer.writerow(header)
+            # write data row
+            now = datetime.now().isoformat(sep=" ", timespec="seconds")
+            row = [now] + [b.count for b in payload.buckets]
+            writer.writerow(row)
+    except Exception as e:
+        # return a JSON 500 (with CORS headers!)
+        raise HTTPException(status_code=500, detail=f"Could not write report: {e}")
+    
+    # schedule the email to be sent in the background
     background_tasks.add_task(send_report_email, report_file)
-    return {"status": "ok"}
+
+    return {"status": "ok", "saved_to": str(report_file)}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="localhost", port=8000)
