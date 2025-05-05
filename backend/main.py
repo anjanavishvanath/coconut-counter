@@ -274,13 +274,13 @@ async def websocket_endpoint(websocket: WebSocket):
             elif data in ("stop", "bucket_full", "reset"):
                 # stop the conveyor relay on bucket_full
                 if data == "bucket_full":
-                    # lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+                    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
                     print("Conveyor stopped: bucket full")
 
                 # reset count on reset
                 if data == "reset":
                     video_streamer.reset()
-                    # lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+                    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
 
                 # in all three cases, we want to shut down the streaming loop
                 video_streamer.stop_streaming()
