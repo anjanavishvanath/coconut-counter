@@ -1,7 +1,8 @@
 import cv2
 import math
 import asyncio
-from fastapi import FastAPI, WebSocket, HTTPException, BackgroundTasks
+from contextlib import suppress
+from fastapi import FastAPI, WebSocket, HTTPException, BackgroundTasks, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 # import base64
@@ -256,27 +257,52 @@ def send_report_email(report_path: Path):
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     video_streamer = VideoStreamer()
+    streaming_task = None
+
     try:
         while True:
-            #wait for start command
             data = await websocket.receive_text()
             print(f"[WS] got message ➞ {data!r}")
+
             if data == "start":
-                await video_streamer.video_stream(websocket)
-            elif data == "stop":
+                # launch streaming in background
+                if streaming_task is None or streaming_task.done():
+                    streaming_task = asyncio.create_task(
+                        video_streamer.video_stream(websocket)
+                    )
+
+            elif data in ("stop", "bucket_full", "reset"):
+                # stop the conveyor relay on bucket_full
+                if data == "bucket_full":
+                    # lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+                    print("Conveyor stopped: bucket full")
+
+                # reset count on reset
+                if data == "reset":
+                    video_streamer.reset()
+                    # lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+
+                # in all three cases, we want to shut down the streaming loop
                 video_streamer.stop_streaming()
-                break
-            elif data == "bucket_full":
-                # operator wants to stop when a bucket fills
-                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
-                print("Conveyor stopped: bucket full")
-                # return {"message": "Conveyor stopped: bucket full"}
-            elif data == "reset":
-                video_streamer.reset() #reset the count
-                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
-    except Exception as e:
-        print(f"Connection closed: {e}")
+                if streaming_task and not streaming_task.done():
+                    streaming_task.cancel()
+                    # optionally await cancellation to silence warnings:
+                    with suppress(asyncio.CancelledError):
+                        await streaming_task
+                    streaming_task = None
+
+                if data == "stop":
+                    break  # exit the outer loop, closing WS
+
+            else:
+                print(f"[WS] Unknown command: {data!r}")
+
+    except WebSocketDisconnect:
+        print("Client disconnected")
     finally:
+        # ensure we clean up
+        if streaming_task and not streaming_task.done():
+            streaming_task.cancel()
         video_streamer.stop_streaming()
 
 # ─── HTTP functions ──────────────────────────────────────────────
