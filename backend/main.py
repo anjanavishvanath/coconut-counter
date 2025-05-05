@@ -78,44 +78,136 @@ def send_report_email(report_path: Path):
     smtp.send_message(msg)
     smtp.quit()
 
-# ─── VideoStreamer class (unchanged) ─────────────────────────────
+# ─── Video Processing Classes ────────────────────────────────────────
 class VideoStreamer:
     def __init__(self):
         self.current_count = 0
+        self.processing = False
         self.cap = None
-        # thresholds & tracker params...
+
+        # Color threshold for contours (tuned for brown coconuts)
         self.lower_brown = (8, 50, 50)
         self.upper_brown = (30, 255, 255)
-        self.min_contour_area = 1250
+        self.min_contour_area = 1250 # 2500 for application
+
+        # Tracker parameters
         self.tracked_objects = {}
         self.next_object_id = 0
-        self.distance_threshold = 50
+        self.distance_threshold = 50 #make 120 for application
         self.max_disappeared = 5
-        self.trigger_line_x = 190
+
+        # Trigger line coordinates
+        self.trigger_line_x = 190 # 190 for webcam, 428 for application
+
         self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 50]
+
     def reset(self):
         self.current_count = 0
-        self.tracked_objects.clear()
+        self.tracked_objects = {}
         self.next_object_id = 0
+
     def process_frame(self, frame):
-        # contour detection & counting logic...
-        return frame  # placeholder
+        roi = frame.copy()
+        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv, self.lower_brown, self.upper_brown)
+
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        filtered_contours = [c for c in contours if cv2.contourArea(c) > self.min_contour_area]
+
+        current_centroids = []
+        for contour in filtered_contours:
+            M = cv2.moments(contour)
+            if M["m00"] != 0:
+                cx = int(M["m10"] / M["m00"])
+                cy = int(M["m01"] / M["m00"])
+                current_centroids.append((cx, cy))
+                x, y, w, h = cv2.boundingRect(contour)
+                # cv2.rectangle(roi, (x, y), (x + w, y + h), (255, 0, 0), 2)
+
+        assigned = set()
+        for object_id, data in list(self.tracked_objects.items()):
+            object_centroid = data["centroid"]
+            best_match = None
+            best_distance = float("inf")
+
+            for i, centroid in enumerate(current_centroids):
+                if i in assigned:
+                    continue
+                distance = math.hypot(centroid[0] - object_centroid[0], centroid[1] - object_centroid[1])
+                if distance < best_distance:
+                    best_distance = distance
+                    best_match = i
+
+            if best_distance < self.distance_threshold:
+                new_centroid = current_centroids[best_match]
+                data["previous_centroid"] = data["centroid"]
+                data["centroid"] = new_centroid
+                data["disappeared"] = 0
+                assigned.add(best_match)
+            else:
+                data["disappeared"] += 1
+
+        remove_ids = [obj_id for obj_id, data in self.tracked_objects.items() if data["disappeared"] > self.max_disappeared]
+        for obj_id in remove_ids:
+            del self.tracked_objects[obj_id]
+
+        for i, centroid in enumerate(current_centroids):
+            if i not in assigned:
+                self.tracked_objects[self.next_object_id] = {
+                    "centroid": centroid,
+                    "previous_centroid": centroid,
+                    "disappeared": 0,
+                    "counted": False
+                }
+                self.next_object_id += 1
+
+        for object_id, data in self.tracked_objects.items():
+            cx, cy = data["centroid"]
+            prev_cx, prev_cy = data["previous_centroid"]
+            if not data["counted"] and prev_cx <= self.trigger_line_x < cx:
+                self.current_count += 1
+                data["counted"] = True
+            # cv2.circle(roi, (cx, cy), 4, (0, 0, 255), -1)
+            # cv2.putText(roi, str(object_id), (cx - 10, cy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
+
+        cv2.line(roi, (self.trigger_line_x, 0), (self.trigger_line_x, roi.shape[0]), (0, 0, 255), 2)
+        # cv2.putText(roi, f"Coconuts: {self.current_count}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+        return roi
+
     async def video_stream(self, websocket: WebSocket):
-        self.cap = cv2.VideoCapture(0)
+        self.cap = cv2.VideoCapture(0) #../videos/vid4.mp4
         self.reset()
         try:
             while self.cap.isOpened():
-                ret, frame = self.cap.read()
+                ret, frame = self.cap.read() 
+                # frame.shape == (480, 640, 3) for webcam
                 frame = cv2.resize(frame, (320, 240))
-                if not ret: break
-                processed = self.process_frame(frame)
-                _, buf = cv2.imencode('.jpg', processed, self.encode_param)
-                jpg_bytes = buf.tobytes()
-                header = struct.pack("!I", self.current_count)
-                await websocket.send_bytes(header + jpg_bytes)
-                await asyncio.sleep(1/24)
+                if not ret:
+                    break
+
+                processed_frame = self.process_frame(frame)
+                _, buffer = cv2.imencode('.jpg', processed_frame, self.encode_param)
+
+                jpg_bytes = buffer.tobytes()
+                #pack the 32 bit count as a 4 byte binary string
+                count_header = struct.pack("!I", self.current_count)
+
+                # send a single binary frame: [4-byte count][jpeg…]
+                await websocket.send_bytes(count_header + jpg_bytes)
+
+                await asyncio.sleep(1/24)  # Control FPS (24 fps)
+
+        except Exception as e:
+            print(f"Error in video stream: {e}")
         finally:
-            if self.cap: self.cap.release()
+            self.stop_streaming()
+
+    def stop_streaming(self):
+        self.processing = False
+        if self.cap:
+            self.cap.release()
+
+        print("Video capture released and windows destroyed.")
 
 # ─── Configure GPIO interrupts ──────────────────────────────────────
 def gpio_setup():
