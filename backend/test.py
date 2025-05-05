@@ -1,5 +1,4 @@
 import lgpio
-import threading
 import time
 
 # BCM pin numbers
@@ -9,32 +8,22 @@ CONVEYOR_RELAY_PIN = 23
 CONVEYOR_RELAY_PIN2 = 24
 CONVEYOR_RELAY_PIN3 = 25
 
-#open GPIO chip
+#setup
 chip = lgpio.gpiochip_open(0)
 
+lgpio.gpio_claim_input(chip, START_BUTTON_PIN, pull=lgpio.PULL_UP)
+lgpio.gpio_claim_input(chip, STOP_BUTTON_PIN, pull=lgpio.PULL_UP)
+
 try:
-    # Set up GPIO pins
-    lgpio.gpio_claim_output(chip, CONVEYOR_RELAY_PIN, 0)
-    lgpio.gpio_claim_input(chip, START_BUTTON_PIN, lgpio.SET_PULL_UP)
-
-    def button_callback(handle, gpio, edge, tick):
-        print("Button pressed")
-        if edge == lgpio.FALLING_EDGE:
-            lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)  # Turn on the conveyor relay
-        elif edge == lgpio.RISING_EDGE:
-            lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
-
-    cb = lgpio.callback(chip, START_BUTTON_PIN, lgpio.BOTH_EDGES, button_callback, debounce=50)
-
-    print("Press CTRL-C to exit")
     while True:
-        time.sleep(1)  # Keep program running
+        startState = lgpio.gpio_read(chip, START_BUTTON_PIN)
+        StopState = lgpio.gpio_read(chip, STOP_BUTTON_PIN)
+
+        print("Start Button State: ", startState, "Stop Button State: ", StopState)
 
 except KeyboardInterrupt:
     pass
 finally:
-    #cleanup
-    cb.cancel()  # Remove callback
-    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)  # Ensure relay is off
-    lgpio.gpiochip_close(chip)  # Release GPIO resources
-    print("\nCleaned up GPIO resources")
+    lgpio.gpio_release(chip, START_BUTTON_PIN)
+    lgpio.gpio_release(chip, STOP_BUTTON_PIN)
+    lgpio.gpiochip_close(chip)  
