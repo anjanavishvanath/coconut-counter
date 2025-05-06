@@ -119,7 +119,7 @@ class VideoStreamer:
                 cy = int(M["m01"] / M["m00"])
                 current_centroids.append((cx, cy))
                 x, y, w, h = cv2.boundingRect(contour)
-                # cv2.rectangle(roi, (x, y), (x + w, y + h), (255, 0, 0), 2)
+                cv2.rectangle(roi, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
         assigned = set()
         for object_id, data in list(self.tracked_objects.items()):
@@ -168,7 +168,7 @@ class VideoStreamer:
             # cv2.putText(roi, str(object_id), (cx - 10, cy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
 
         cv2.line(roi, (self.trigger_line_x, 0), (self.trigger_line_x, roi.shape[0]), (0, 0, 255), 2)
-        # cv2.putText(roi, f"Coconuts: {self.current_count}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+        cv2.putText(roi, f"Coconuts: {self.current_count}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
         return roi
 
     async def video_stream(self, websocket: WebSocket):
