@@ -152,9 +152,7 @@ export default function App() {
   const handleReset = () => {
     if (!confirm("Reset all data?")) return;
     if (ws.current?.readyState === WebSocket.OPEN) {
-      ws.current.send("stop");
       ws.current.send("reset");
-      ws.current.close();
     }
     setIsStreaming(false);
     setTotalCoconutCount(0);
