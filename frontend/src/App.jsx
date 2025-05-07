@@ -34,14 +34,23 @@ export default function App() {
   useEffect(() => { refillingModeRef.current = refillingMode; }, [refillingMode]);
   useEffect(() => { selectedBucketRef.current = selectedBucket; }, [selectedBucket]);
 
-  useEffect(() => {
+  // Initialize WebSocket connection
+  const initWebSocket = () => {
+
+    if (ws.current) {
+      ws.current.onopen = null;
+      ws.current.onmessage = null;
+      ws.current.onclose = null;
+      ws.current.onerror = null;
+    }
+
     ws.current = new WebSocket("ws://localhost:8000/ws");
     ws.current.binaryType = "blob";
-
+  
     ws.current.onopen = () => {
       console.log("WS connected");
     };
-
+  
     ws.current.onmessage = (event) => {
       console.log("[CLIENT] got WS message:", event.data);
       // Distinguish control messages (strings) from video frames (Blob)
@@ -122,6 +131,18 @@ export default function App() {
       };
       reader.readAsArrayBuffer(event.data);
     };
+  
+    ws.current.onclose = () => {
+      console.log("WS closed");
+    };
+  
+    ws.current.onerror = (err) => {
+      console.error("WS error:", err);
+    };
+  };
+
+  useEffect(() => {
+    initWebSocket();
 
     return () => {
       if (ws.current?.readyState === WebSocket.OPEN) {
@@ -134,14 +155,20 @@ export default function App() {
 
   // watch for when the user uses the UI to toggle streaming
   useEffect(() => {
-    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
-
-    if (isStreaming) {
-      ws.current.send("start");
-    } else {
-      ws.current.send("stop");
-    }
-  }, [isStreaming]);
+  if (!ws.current) return;
+  // if still connecting, wait until open
+  if (ws.current.readyState === WebSocket.CONNECTING) {
+    const onOpen = () => {
+      ws.current.send(isStreaming ? "start" : "stop");
+      ws.current.removeEventListener("open", onOpen);
+    };
+    ws.current.addEventListener("open", onOpen);
+    return;
+  }
+  if (ws.current.readyState === WebSocket.OPEN) {
+    ws.current.send(isStreaming ? "start" : "stop");
+  }
+}, [isStreaming]);
 
   const handleStartStop = () => {
     if (!isStreaming) filledBucketsCountRef.current = 0;
@@ -154,6 +181,11 @@ export default function App() {
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send("reset");
     }
+
+    setTimeout(() => {
+      initWebSocket();
+    }, 300);
+
     setIsStreaming(false);
     setTotalCoconutCount(0);
     setImgSrc("");
