@@ -7,11 +7,12 @@ export default function App() {
   // General States and Refs
   const ws = useRef(null);
   const [isStreaming, setIsStreaming] = useState(false);
+  const isStreamingRef = useRef(isStreaming);
   const [totalCoconutCount, setTotalCoconutCount] = useState(0);
   const [imgSrc, setImgSrc] = useState("");
 
   // Bucket related states
-  const bktsA = Array.from({ length: 14 }, (_, i) => ({ id: i + 1, count: 0, set_value: 2 }));
+  const bktsA = Array.from({ length: 3 }, (_, i) => ({ id: i + 1, count: 0, set_value: 2 }));
   const [buckets, setBuckets] = useState(bktsA);
   const [activeBucket, setActiveBucket] = useState(1);
   const [filledBucketsCount, setFilledBucketsCount] = useState(0);
@@ -33,6 +34,12 @@ export default function App() {
   useEffect(() => { filledBucketsCountRef.current = filledBucketsCount; }, [filledBucketsCount]);
   useEffect(() => { refillingModeRef.current = refillingMode; }, [refillingMode]);
   useEffect(() => { selectedBucketRef.current = selectedBucket; }, [selectedBucket]);
+  useEffect(() => { isStreamingRef.current = isStreaming }, [isStreaming]);
+  useEffect(() => {
+  return () => {
+    if (imgSrc) URL.revokeObjectURL(imgSrc);
+  };
+}, [imgSrc]);
 
   //Establish web socket at page load
   useEffect(() => {
@@ -46,7 +53,14 @@ export default function App() {
     ws.current.onmessage = (event) => {
       if (typeof event.data === "string") {
         console.log("Control message:", event.data);
-      } else {
+        if (event.data === "reset") {
+          // clear any lingering UI
+          setTotalCoconutCount(0);
+          setImgSrc("");
+          setActiveBucket(1);
+          setFilledBucketsCount(0);
+        }
+      } else if (isStreamingRef.current) {
         // Read the incoming Blob as an ArrayBuffer
         const reader = new FileReader();
         reader.onload = () => {
@@ -152,6 +166,7 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ buckets }),
       });
+      handleReset();
     } catch (e) {
       console.error("Error saving report:", e);
     }
