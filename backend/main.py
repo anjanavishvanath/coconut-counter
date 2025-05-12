@@ -8,7 +8,8 @@ import uvicorn
 # import base64
 import struct
 
-# Libraries for reports
+
+# Moduoles for report generation and file handling
 import csv
 from datetime import datetime
 from pathlib import Path
@@ -21,59 +22,16 @@ import os
 import smtplib
 from email.message import EmailMessage
 
-# GPIO libraries
-import lgpio
+# Modules for GPIO simulation
+import sys
+'''
+# Add stubs/ to the front of module search path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'stubs'))
+# Modules for GPIO manipulation in Raspberry Pi 
 import RPi.GPIO as GPIO 
+import lgpio
+'''
 import time
-
-# ─── Global asyncio event ───────────────────────────────────────────
-loop = asyncio.get_event_loop() #grab the running event loop
-start_event = asyncio.Event() # this event will be set when the start button is pressed
-
-# ─── GPIO setup ─────────────────────────────────────────────────────
-# BCM pin numbers
-START_BUTTON_PIN = 16
-STOP_BUTTON_PIN  = 12
-CONVEYOR_RELAY_PIN = 23
-
-# Open the GPIO chip (always 0 on Pi)
-chip = lgpio.gpiochip_open(0)
-
-# Claim the relay pin as an output (default HIGH/off)
-lgpio.gpio_claim_output(chip, CONVEYOR_RELAY_PIN)
-lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
-
-# ─── RPi.GPIO setup for the button ────────────────────────────────────────
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(START_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-GPIO.setup(STOP_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-
-def start_button_pressed(channel):
-    """Callback: button pressed → turn conveyor on."""
-    print("Button pressed, starting conveyor…")
-    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
-    loop.call_soon_threadsafe(start_event.set)  # # notify the WS handler that “start” has occurred
-
-def stop_button_pressed(channel):
-    """Callback: button pressed → turn conveyor off."""
-    print("Button pressed, stopping conveyor…")
-    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
-
-# ─── Install a falling-edge interrupt with 200 ms debounce ─────────────────
-GPIO.add_event_detect(
-    START_BUTTON_PIN,
-    GPIO.FALLING,              # detect HIGH → LOW transitions
-    callback=start_button_pressed,
-    bouncetime=200             # debounce in milliseconds
-)
-
-GPIO.add_event_detect(
-    STOP_BUTTON_PIN,
-    GPIO.FALLING,              # detect HIGH → LOW transitions
-    callback=stop_button_pressed,
-    bouncetime=200             # debounce in milliseconds
-)
-
 
 # ─── Video Processing Classes ────────────────────────────────────────
 class VideoStreamer:
@@ -97,8 +55,9 @@ class VideoStreamer:
         self.trigger_line_x = 190 # 190 for webcam, 428 for application
 
         self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 50]
-
+    
     def reset(self):
+        self.processing = False
         self.current_count = 0
         self.tracked_objects = {}
         self.next_object_id = 0
@@ -172,39 +131,40 @@ class VideoStreamer:
         return roi
 
     async def video_stream(self, websocket: WebSocket):
-        self.cap = cv2.VideoCapture(0) #../videos/vid4.mp4
-        self.reset()
-        try:
-            while self.cap.isOpened():
-                ret, frame = self.cap.read() 
-                # frame.shape == (480, 640, 3) for webcam
-                frame = cv2.resize(frame, (320, 240))
-                if not ret:
-                    break
+        self.processing = True
+        while self.processing:
+            self.cap = cv2.VideoCapture("../videos/vid4.mp4") #../videos/vid4.mp4
+            try:
+                while self.cap.isOpened():
+                    ret, frame = self.cap.read() 
+                    # frame.shape == (480, 640, 3) for webcam
+                    frame = cv2.resize(frame, (320, 240))
+                    if not ret:
+                        break
 
-                processed_frame = self.process_frame(frame)
-                _, buffer = cv2.imencode('.jpg', processed_frame, self.encode_param)
-                
-                jpg_bytes = buffer.tobytes()
-                #pack the 32 bit count as a 4 byte binary string
-                count_header = struct.pack("!I", self.current_count)
+                    processed_frame = self.process_frame(frame)
+                    _, buffer = cv2.imencode('.jpg', processed_frame, self.encode_param)
+                    
+                    jpg_bytes = buffer.tobytes()
+                    #pack the 32 bit count as a 4 byte binary string
+                    count_header = struct.pack("!I", self.current_count)
 
-                # send a single binary frame: [4-byte count][jpeg…]
-                await websocket.send_bytes(count_header + jpg_bytes)
-                
-                await asyncio.sleep(1/24)  # Control FPS (24 fps)
-                
-        except Exception as e:
-            print(f"Error in video stream: {e}")
-        finally:
-            self.stop_streaming()
+                    # send a single binary frame: [4-byte count][jpeg…]
+                    await websocket.send_bytes(count_header + jpg_bytes)
+                    
+                    await asyncio.sleep(1/24)  # Control FPS (24 fps)
+                    
+            except Exception as e:
+                print(f"Error in video stream: {e}")
+            finally: 
+                self.stop_streaming()
 
     def stop_streaming(self):
         self.processing = False
         if self.cap:
             self.cap.release()
         
-        print("Video capture released and windows destroyed.")
+        print("Stopped: Video capture released and windows destroyed.")
 
 # ─── load .env ─────────────────────────────────────────────────────
 load_dotenv()
@@ -218,6 +178,7 @@ EMAIL_TO      = os.getenv("EMAIL_TO")
 
 # ─── fastapi setup ─────────────────────────────────────────────────
 app = FastAPI()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -257,77 +218,6 @@ def send_report_email(report_path: Path):
     smtp.send_message(msg)
     smtp.quit()
 
-# ─── Websocket functions ──────────────────────────────────────────
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    video_streamer = VideoStreamer()
-    streaming_task = None
-
-    try:
-        while True:
-            # create two tasks: one to wait for client text, one to wait for button press
-            recv_task = asyncio.create_task(websocket.receive_text())
-            hw_task   = asyncio.create_task(start_event.wait())
-
-            done, pending = await asyncio.wait(
-                [recv_task, hw_task],
-                return_when=asyncio.FIRST_COMPLETED
-            )
-
-            # if hardware START fired:
-            if hw_task in done:
-                start_event.clear()   # reset it
-                data = "start"
-            else:
-                data = recv_task.result()
-
-            # cancel the other task
-            for t in pending:
-                t.cancel()
-                with suppress(asyncio.CancelledError):
-                    await t
-
-            print(f"[WS] got command ➞ {data!r}")
-
-            if data == "start":
-                # launch streaming in background
-                if streaming_task is None or streaming_task.done():
-                    # let the client know we’re streaming now
-                    print("↗ sending 'started' to client")
-                    await websocket.send_text("started")
-                    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
-                    streaming_task = asyncio.create_task(
-                        video_streamer.video_stream(websocket)
-                    )
-
-            elif data in ("stop", "bucket_full", "reset"):
-                # notify client so it can update its UI
-                await websocket.send_text("stopped")
-                # stop the conveyor relay on bucket_full
-                if data == "bucket_full":
-                    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
-                    print("Conveyor stopped: bucket full")
-
-                # reset count on reset
-                if data == "reset":
-                    video_streamer.reset()
-                    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
-
-                if data == "stop":
-                    break  # exit the outer loop, closing WS
-
-            else:
-                print(f"[WS] Unknown command: {data!r}")
-
-    except WebSocketDisconnect:
-        print("Client disconnected")
-    finally:
-        # ensure we clean up
-        if streaming_task and not streaming_task.done():
-            streaming_task.cancel()
-        video_streamer.stop_streaming()
-
 # ─── HTTP functions ──────────────────────────────────────────────
 @app.post("/save_report")
 async def save_report(payload: ReportPayload, background_tasks: BackgroundTasks):
@@ -354,9 +244,62 @@ async def save_report(payload: ReportPayload, background_tasks: BackgroundTasks)
         raise HTTPException(status_code=500, detail=f"Could not write report: {e}")
     
     # schedule the email to be sent in the background
-    background_tasks.add_task(send_report_email, report_file)
+    # background_tasks.add_task(send_report_email, report_file) # uncomment to send email
 
     return {"status": "ok", "saved_to": str(report_file)}
 
+# ─── Websocket functions ──────────────────────────────────────────
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    video_streamer = VideoStreamer()
+    stream_task = None
+    
+    try:
+        while True:
+            data = await websocket.receive_text()
+            print(f"[WS] got command ➞ {data!r}")
+
+            if data == "start":
+                if stream_task is None or stream_task.done():
+                    stream_task = asyncio.create_task(video_streamer.video_stream(websocket))
+                await websocket.send_text("started")
+                #start conveyor
+
+            elif data in ("stop", "bucket_full", "reset"):
+                #stop conveyor
+                if data == "stop":
+                    video_streamer.stop_streaming()
+                    if stream_task and not stream_task.done():
+                        stream_task.cancel()
+                    await websocket.send_text("stopped")
+
+                elif data == "bucket_full":
+                    print("Stopping Conveyor")
+        
+                elif data == "reset":
+                    video_streamer.stop_streaming()
+                    if stream_task and not stream_task.done():
+                        stream_task.cancel()
+                    video_streamer.reset()
+                    await websocket.send_text("reset")
+            
+            else:
+                print(f"[WS] Unknown command: {data!r}")
+
+
+    except WebSocketDisconnect:
+        print("Client disconnected")
+        #stop conveyor?
+    
+    finally:
+        # clean up
+        video_streamer.stop_streaming()
+        print("Process Ended")
+
+# ─── WebSocket connection handler ────────────────────────────────
 if __name__ == "__main__":
     uvicorn.run(app, host="localhost", port=8000)
+
+        
+		

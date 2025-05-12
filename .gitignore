@@ -8,3 +8,6 @@ backend/.env
 backend/venv/
 backend/reports.csv
 backend/main_temp.py
+backend/stubs
+backend/simulate_gpio.py
+frontend/src/App_temp.jsx
