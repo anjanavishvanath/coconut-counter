@@ -24,14 +24,55 @@ from email.message import EmailMessage
 
 # Modules for GPIO simulation
 import sys
-'''
 # Add stubs/ to the front of module search path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'stubs'))
+# sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'stubs'))
 # Modules for GPIO manipulation in Raspberry Pi 
 import RPi.GPIO as GPIO 
 import lgpio
-'''
 import time
+
+# ─── GPIO setup ─────────────────────────────────────────────────────
+# BCM pin numbers
+START_BUTTON_PIN = 16
+STOP_BUTTON_PIN  = 12
+CONVEYOR_RELAY_PIN = 23
+
+# Open the GPIO chip (always 0 on Pi)
+chip = lgpio.gpiochip_open(0)
+
+# Claim the relay pin as an output (default HIGH/off)
+lgpio.gpio_claim_output(chip, CONVEYOR_RELAY_PIN)
+lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+
+# ─── RPi.GPIO setup for the button ────────────────────────────────────────
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(START_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(STOP_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+def start_button_pressed(channel):
+    """Callback: button pressed → turn conveyor on."""
+    print("Button pressed, starting conveyor…")
+    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+    
+def stop_button_pressed(channel):
+    """Callback: button pressed → turn conveyor off."""
+    print("Button pressed, stopping conveyor…")
+    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+
+# ─── Install a falling-edge interrupt with 200 ms debounce ─────────────────
+GPIO.add_event_detect(
+    START_BUTTON_PIN,
+    GPIO.FALLING,              # detect HIGH → LOW transitions
+    callback=start_button_pressed,
+    bouncetime=200             # debounce in milliseconds
+)
+
+GPIO.add_event_detect(
+    STOP_BUTTON_PIN,
+    GPIO.FALLING,              # detect HIGH → LOW transitions
+    callback=stop_button_pressed,
+    bouncetime=200             # debounce in milliseconds
+)
 
 # ─── Video Processing Classes ────────────────────────────────────────
 class VideoStreamer:
@@ -133,7 +174,7 @@ class VideoStreamer:
     async def video_stream(self, websocket: WebSocket):
         self.processing = True
         while self.processing:
-            self.cap = cv2.VideoCapture("../videos/vid4.mp4") #../videos/vid4.mp4
+            self.cap = cv2.VideoCapture(0) #../videos/vid4.mp4
             try:
                 while self.cap.isOpened():
                     ret, frame = self.cap.read() 
@@ -264,10 +305,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 if stream_task is None or stream_task.done():
                     stream_task = asyncio.create_task(video_streamer.video_stream(websocket))
                 await websocket.send_text("started")
-                #start conveyor
+                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
 
             elif data in ("stop", "bucket_full", "reset"):
-                #stop conveyor
+                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN,1)
                 if data == "stop":
                     video_streamer.stop_streaming()
                     if stream_task and not stream_task.done():
@@ -275,7 +316,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_text("stopped")
 
                 elif data == "bucket_full":
-                    print("Stopping Conveyor")
+                    print("Bucket full: Stopping Conveyor")
         
                 elif data == "reset":
                     video_streamer.stop_streaming()
@@ -295,6 +336,7 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         # clean up
         video_streamer.stop_streaming()
+        GPIO.cleanup()
         print("Process Ended")
 
 # ─── WebSocket connection handler ────────────────────────────────
