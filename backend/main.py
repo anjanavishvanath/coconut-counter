@@ -25,7 +25,7 @@ from email.message import EmailMessage
 # Modules for GPIO simulation
 import sys
 # Add stubs/ to the front of module search path
-# sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'stubs'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'stubs'))
 # Modules for GPIO manipulation in Raspberry Pi 
 import RPi.GPIO as GPIO 
 import lgpio
@@ -89,11 +89,12 @@ class VideoStreamer:
         # Tracker parameters
         self.tracked_objects = {}
         self.next_object_id = 0
-        self.distance_threshold = 50 #make 120 for application
+        self.distance_threshold = 100 #make 120 for application, 50 for testing vid
         self.max_disappeared = 5
 
         # Trigger line coordinates
-        self.trigger_line_x = 190 # 190 for webcam, 428 for application
+        # self.trigger_line_x = 190 # 190 for webcam, 428 for application
+        self.trigger_line_y = 80
 
         self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 50]
     
@@ -161,25 +162,25 @@ class VideoStreamer:
         for object_id, data in self.tracked_objects.items():
             cx, cy = data["centroid"]
             prev_cx, prev_cy = data["previous_centroid"]
-            if not data["counted"] and prev_cx <= self.trigger_line_x < cx:
+            if not data["counted"] and prev_cy >= self.trigger_line_y > cy:
                 self.current_count += 1
                 data["counted"] = True
             # cv2.circle(roi, (cx, cy), 4, (0, 0, 255), -1)
             # cv2.putText(roi, str(object_id), (cx - 10, cy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
 
-        cv2.line(roi, (self.trigger_line_x, 0), (self.trigger_line_x, roi.shape[0]), (0, 0, 255), 2)
+        cv2.line(roi, (0, self.trigger_line_y), (roi.shape[1], self.trigger_line_y), (0, 0, 255), 2)
         cv2.putText(roi, f"Coconuts: {self.current_count}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
         return roi
 
     async def video_stream(self, websocket: WebSocket):
         self.processing = True
         while self.processing:
-            self.cap = cv2.VideoCapture(0) #../videos/vid4.mp4
+            self.cap = cv2.VideoCapture(0) #../videos/rotated_vid.mp4
             try:
                 while self.cap.isOpened():
                     ret, frame = self.cap.read() 
                     # frame.shape == (480, 640, 3) for webcam
-                    frame = cv2.resize(frame, (320, 240))
+                    frame = cv2.resize(frame, (320, 240)) #compensated for rotaed frame
                     if not ret:
                         break
 

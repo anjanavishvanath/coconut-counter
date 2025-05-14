@@ -1,3 +1,49 @@
+import cv2
+
+input_path = "../videos/vid4.mp4"
+output_path = "../videos/rotated_vid.mp4"
+
+# open input vid
+cap = cv2.VideoCapture(input_path)
+
+#check if the video opened successfully
+if not cap.isOpened():
+    print("Error: Cannot open the video file")
+    exit()
+
+#get original video properties
+fps = cap.get(cv2.CAP_PROP_FPS)
+width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+#swap height and width for rotation
+rotated_width = height
+rotated_height = width
+
+# define the codec and create a VideoWrite object
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')  
+out = cv2.VideoWriter(output_path, fourcc, fps, (rotated_width, rotated_height))
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    # Rotate the frame 90 degrees clockwise
+    rotated_frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+    # write the rotated frame
+    out.write(rotated_frame)
+
+# release everything
+cap.release()
+out.release()
+cv2.destroyAllWindows()  
+
+print("Video rotation complete. Saved as", output_path)
+
+'''
+# GPIO test
 import lgpio
 import time
 
@@ -49,3 +95,4 @@ except KeyboardInterrupt:
 finally:
     # cleanup
     lgpio.gpiochip_close(chip)
+'''
