@@ -8,6 +8,10 @@ import uvicorn
 # import base64
 import struct
 
+# Testing
+from scipy.optimize import linear_sum_assignment
+import numpy as np
+
 
 # Moduoles for report generation and file handling
 import csv
@@ -89,12 +93,12 @@ class VideoStreamer:
         # Tracker parameters
         self.tracked_objects = {}
         self.next_object_id = 0
-        self.distance_threshold = 40 #make 120 for application, 50 for testing vid
+        self.distance_threshold = 150 #make 120 for application, 50 for testing vid
         self.max_disappeared = 5
 
         # Trigger line coordinates
         # self.trigger_line_x = 190 # 190 for webcam, 428 for application
-        self.trigger_line_y = 80
+        self.trigger_line_y = 150
 
         self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 50]
     
@@ -121,36 +125,55 @@ class VideoStreamer:
                 current_centroids.append((cx, cy))
                 x, y, w, h = cv2.boundingRect(contour)
                 cv2.rectangle(roi, (x, y), (x + w, y + h), (255, 0, 0), 2)
+        
+        # BUILD COST MATRIX between existing tracks and new centroids
+        old_ids = list(self.tracked_objects.keys())
+        old_centroids = [self.tracked_objects[i]["centroid"] for i in old_ids]
+        new_centroids = current_centroids
+        
+        assigned_new = set()
 
-        assigned = set()
-        for object_id, data in list(self.tracked_objects.items()):
-            object_centroid = data["centroid"]
-            best_match = None
-            best_distance = float("inf")
+        if old_centroids and new_centroids:
+            cost = np.zeros((len(old_centroids), len(new_centroids)), dtype=np.float32)
+            for i, oc in enumerate(old_centroids):
+                for j, nc in enumerate(new_centroids):
+                    cost[i, j] = math.hypot(oc[0]-nc[0], oc[1]-nc[1])
 
-            for i, centroid in enumerate(current_centroids):
-                if i in assigned:
-                    continue
-                distance = math.hypot(centroid[0] - object_centroid[0], centroid[1] - object_centroid[1])
-                if distance < best_distance:
-                    best_distance = distance
-                    best_match = i
+            # Hungarian assignment
+            row_ind, col_ind = linear_sum_assignment(cost)
 
-            if best_distance < self.distance_threshold:
-                new_centroid = current_centroids[best_match]
-                data["previous_centroid"] = data["centroid"]
-                data["centroid"] = new_centroid
-                data["disappeared"] = 0
-                assigned.add(best_match)
-            else:
+            
+            # match up those under threshold
+            for r, c in zip(row_ind, col_ind):
+                if cost[r, c] < self.distance_threshold:
+                    track_id = old_ids[r]
+                    self.tracked_objects[track_id]["previous_centroid"] = self.tracked_objects[track_id]["centroid"]
+                    self.tracked_objects[track_id]["centroid"] = new_centroids[c]
+                    self.tracked_objects[track_id]["disappeared"] = 0
+                    assigned_new.add(c)
+                else:
+                    # too far: mark that track as disappeared
+                    track_id = old_ids[r]
+                    self.tracked_objects[track_id]["disappeared"] += 1
+
+            # any old track not in row_ind should increment disappeared
+            unmatched_old = set(old_ids) - { old_ids[r] for r in row_ind }
+            for track_id in unmatched_old:
+                self.tracked_objects[track_id]["disappeared"] += 1
+
+        else:
+            # if no matching to do, just increment disappeared for all existing
+            for track_id, data in self.tracked_objects.items():
                 data["disappeared"] += 1
 
-        remove_ids = [obj_id for obj_id, data in self.tracked_objects.items() if data["disappeared"] > self.max_disappeared]
-        for obj_id in remove_ids:
-            del self.tracked_objects[obj_id]
+        # CLEAN UP disappeared
+        to_del = [tid for tid,d in self.tracked_objects.items() if d["disappeared"]>self.max_disappeared]
+        for tid in to_del:
+            del self.tracked_objects[tid]
 
-        for i, centroid in enumerate(current_centroids):
-            if i not in assigned:
+        # NEW detections: any centroid index not in assigned_new
+        for idx, centroid in enumerate(new_centroids):
+            if idx not in assigned_new:
                 self.tracked_objects[self.next_object_id] = {
                     "centroid": centroid,
                     "previous_centroid": centroid,
@@ -159,12 +182,14 @@ class VideoStreamer:
                 }
                 self.next_object_id += 1
 
+        # … now your crossing‐the‐line counting on self.tracked_objects …
         for object_id, data in self.tracked_objects.items():
             cx, cy = data["centroid"]
             prev_cx, prev_cy = data["previous_centroid"]
             if not data["counted"] and prev_cy >= self.trigger_line_y > cy:
                 self.current_count += 1
                 data["counted"] = True
+        
             # cv2.circle(roi, (cx, cy), 4, (0, 0, 255), -1)
             # cv2.putText(roi, str(object_id), (cx - 10, cy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
 
@@ -175,7 +200,7 @@ class VideoStreamer:
     async def video_stream(self, websocket: WebSocket):
         self.processing = True
         while self.processing:
-            self.cap = cv2.VideoCapture(0) #../videos/rotated_vid.mp4
+            self.cap = cv2.VideoCapture("../videos/rotated_vid.mp4") #../videos/rotated_vid.mp4
             try:
                 while self.cap.isOpened():
                     ret, frame = self.cap.read() 
