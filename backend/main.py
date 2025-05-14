@@ -89,7 +89,7 @@ class VideoStreamer:
         # Tracker parameters
         self.tracked_objects = {}
         self.next_object_id = 0
-        self.distance_threshold = 80 #make 120 for application, 50 for testing vid
+        self.distance_threshold = 40 #make 120 for application, 50 for testing vid
         self.max_disappeared = 5
 
         # Trigger line coordinates
