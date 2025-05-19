@@ -126,7 +126,11 @@ class VideoStreamer:
             dets.append([x, y, x+w, y+h, 1.0])  # last element is dummy “confidence”
 
         # 2) TRACKING
-        tracks = self.tracker.update(np.array(dets))
+        # make sure we always pass a (N,5) array, never a (5,) 1-D slice
+        dets_np = np.array(dets, dtype=np.float32)
+        if dets_np.ndim == 1:
+            dets_np = dets_np.reshape(1, 5)
+        tracks = self.tracker.update(dets_np)
 
         # 3) COUNTING logic (same as before)
         for x1,y1,x2,y2,tid in tracks:
@@ -155,8 +159,13 @@ class VideoStreamer:
                 frame = cv2.resize(frame, (320, 240)) #compensated for rotaed frame
                 if not ret:
                     break
-
-                processed_frame = self.process_frame(frame)
+                
+                try:
+                    processed_frame = self.process_frame(frame)
+                except Exception as e:
+                    print(f"Error processing frame: {e}")
+                    continue
+                
                 _, buffer = cv2.imencode('.jpg', processed_frame, self.encode_param)
                     
                 jpg_bytes = buffer.tobytes()
