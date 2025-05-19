@@ -20,6 +20,9 @@ from pathlib import Path
 from typing import List
 from pydantic import BaseModel
 
+# Modules for SORT tracker
+from sort import Sort
+
 # Libraries for email
 from dotenv import load_dotenv
 import os
@@ -90,140 +93,84 @@ class VideoStreamer:
         self.upper_brown = (30, 255, 255)
         self.min_contour_area = 1250 # 2500 for application
 
-        # Tracker parameters
-        self.tracked_objects = {}
-        self.next_object_id = 0
-        self.distance_threshold = 150 #make 120 for application, 50 for testing vid
-        self.max_disappeared = 5
-
         # Trigger line coordinates
         # self.trigger_line_x = 190 # 190 for webcam, 428 for application
         self.trigger_line_y = 150
 
         self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 50]
-    
+
+        self.tracker = Sort(max_age=5, min_hits=1, iou_threshold=0.3)
+        self.counted_ids  = set()
+
     def reset(self):
         self.processing = False
         self.current_count = 0
-        self.tracked_objects = {}
-        self.next_object_id = 0
+        self.tracker      = Sort(max_age=5, min_hits=1, iou_threshold=0.3)
+        self.counted_ids.clear()
+        
 
     def process_frame(self, frame):
         roi = frame.copy()
+        # 1) DETECTION via HSV threshold + contours
         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(hsv, self.lower_brown, self.upper_brown)
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         filtered_contours = [c for c in contours if cv2.contourArea(c) > self.min_contour_area]
 
-        current_centroids = []
-        for contour in filtered_contours:
-            M = cv2.moments(contour)
-            if M["m00"] != 0:
-                cx = int(M["m10"] / M["m00"])
-                cy = int(M["m01"] / M["m00"])
-                current_centroids.append((cx, cy))
-                x, y, w, h = cv2.boundingRect(contour)
-                cv2.rectangle(roi, (x, y), (x + w, y + h), (255, 0, 0), 2)
-        
-        # BUILD COST MATRIX between existing tracks and new centroids
-        old_ids = list(self.tracked_objects.keys())
-        old_centroids = [self.tracked_objects[i]["centroid"] for i in old_ids]
-        new_centroids = current_centroids
-        
-        assigned_new = set()
+        dets = []
+        for c in filtered_contours:
+            if cv2.contourArea(c) < self.min_contour_area: 
+                continue
+            x,y,w,h = cv2.boundingRect(c)
+            dets.append([x, y, x+w, y+h, 1.0])  # last element is dummy “confidence”
 
-        if old_centroids and new_centroids:
-            cost = np.zeros((len(old_centroids), len(new_centroids)), dtype=np.float32)
-            for i, oc in enumerate(old_centroids):
-                for j, nc in enumerate(new_centroids):
-                    cost[i, j] = math.hypot(oc[0]-nc[0], oc[1]-nc[1])
+        # 2) TRACKING
+        tracks = self.tracker.update(np.array(dets))
 
-            # Hungarian assignment
-            row_ind, col_ind = linear_sum_assignment(cost)
-
-            
-            # match up those under threshold
-            for r, c in zip(row_ind, col_ind):
-                if cost[r, c] < self.distance_threshold:
-                    track_id = old_ids[r]
-                    self.tracked_objects[track_id]["previous_centroid"] = self.tracked_objects[track_id]["centroid"]
-                    self.tracked_objects[track_id]["centroid"] = new_centroids[c]
-                    self.tracked_objects[track_id]["disappeared"] = 0
-                    assigned_new.add(c)
-                else:
-                    # too far: mark that track as disappeared
-                    track_id = old_ids[r]
-                    self.tracked_objects[track_id]["disappeared"] += 1
-
-            # any old track not in row_ind should increment disappeared
-            unmatched_old = set(old_ids) - { old_ids[r] for r in row_ind }
-            for track_id in unmatched_old:
-                self.tracked_objects[track_id]["disappeared"] += 1
-
-        else:
-            # if no matching to do, just increment disappeared for all existing
-            for track_id, data in self.tracked_objects.items():
-                data["disappeared"] += 1
-
-        # CLEAN UP disappeared
-        to_del = [tid for tid,d in self.tracked_objects.items() if d["disappeared"]>self.max_disappeared]
-        for tid in to_del:
-            del self.tracked_objects[tid]
-
-        # NEW detections: any centroid index not in assigned_new
-        for idx, centroid in enumerate(new_centroids):
-            if idx not in assigned_new:
-                self.tracked_objects[self.next_object_id] = {
-                    "centroid": centroid,
-                    "previous_centroid": centroid,
-                    "disappeared": 0,
-                    "counted": False
-                }
-                self.next_object_id += 1
-
-        # … now your crossing‐the‐line counting on self.tracked_objects …
-        for object_id, data in self.tracked_objects.items():
-            cx, cy = data["centroid"]
-            prev_cx, prev_cy = data["previous_centroid"]
-            if not data["counted"] and prev_cy >= self.trigger_line_y > cy:
+        # 3) COUNTING logic (same as before)
+        for x1,y1,x2,y2,tid in tracks:
+            cx, cy = int((x1+x2)/2), int((y1+y2)/2)
+            if tid not in self.counted_ids and cy < self.trigger_line_y:
+                self.counted_ids.add(tid)
                 self.current_count += 1
-                data["counted"] = True
-        
-            # cv2.circle(roi, (cx, cy), 4, (0, 0, 255), -1)
-            # cv2.putText(roi, str(object_id), (cx - 10, cy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
 
-        cv2.line(roi, (0, self.trigger_line_y), (roi.shape[1], self.trigger_line_y), (0, 0, 255), 2)
-        cv2.putText(roi, f"Coconuts: {self.current_count}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+            # draw for debug
+            cv2.rectangle(roi, (int(x1),int(y1)), (int(x2),int(y2)), (0,255,0),2)
+            cv2.putText(roi, f"{int(tid)}", (int(x1),int(y1)-5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0),1)
+
+       # draw line + count
+        cv2.line(frame, (0, self.trigger_line_y),(frame.shape[1], self.trigger_line_y), (0,0,255),2)
+        cv2.putText(frame, f"Count: {self.current_count}", (10,30),cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0,0,255),2)
         return roi
 
     async def video_stream(self, websocket: WebSocket):
+        self.cap = cv2.VideoCapture("../videos/real_vid.mp4") #../videos/rotated_vid.mp4
         self.processing = True
-        while self.processing:
-            self.cap = cv2.VideoCapture("../videos/rotated_vid.mp4") #../videos/rotated_vid.mp4
-            try:
-                while self.cap.isOpened():
-                    ret, frame = self.cap.read() 
-                    # frame.shape == (480, 640, 3) for webcam
-                    frame = cv2.resize(frame, (320, 240)) #compensated for rotaed frame
-                    if not ret:
-                        break
+        try:
+            while self.cap.isOpened() and self.processing:
+                ret, frame = self.cap.read() 
+                # frame.shape == (480, 640, 3) for webcam
+                frame = cv2.resize(frame, (320, 240)) #compensated for rotaed frame
+                if not ret:
+                    break
 
-                    processed_frame = self.process_frame(frame)
-                    _, buffer = cv2.imencode('.jpg', processed_frame, self.encode_param)
+                processed_frame = self.process_frame(frame)
+                _, buffer = cv2.imencode('.jpg', processed_frame, self.encode_param)
                     
-                    jpg_bytes = buffer.tobytes()
-                    #pack the 32 bit count as a 4 byte binary string
-                    count_header = struct.pack("!I", self.current_count)
+                jpg_bytes = buffer.tobytes()
+                #pack the 32 bit count as a 4 byte binary string
+                count_header = struct.pack("!I", self.current_count)
 
-                    # send a single binary frame: [4-byte count][jpeg…]
-                    await websocket.send_bytes(count_header + jpg_bytes)
+                # send a single binary frame: [4-byte count][jpeg…]
+                await websocket.send_bytes(count_header + jpg_bytes)
                     
-                    await asyncio.sleep(1/24)  # Control FPS (24 fps)
+                await asyncio.sleep(1/24)  # Control FPS (24 fps)
                     
-            except Exception as e:
+        except Exception as e:
                 print(f"Error in video stream: {e}")
-            finally: 
+        finally: 
                 self.stop_streaming()
 
     def stop_streaming(self):
