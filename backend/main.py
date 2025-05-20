@@ -200,7 +200,7 @@ class VideoStreamer:
     async def video_stream(self, websocket: WebSocket):
         self.processing = True
         while self.processing:
-            self.cap = cv2.VideoCapture("../videos/rotated_vid.mp4") #../videos/rotated_vid.mp4
+            self.cap = cv2.VideoCapture("../videos/250_coconut.mp4") #../videos/rotated_vid.mp4
             try:
                 while self.cap.isOpened():
                     ret, frame = self.cap.read() 
