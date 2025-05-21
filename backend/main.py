@@ -84,7 +84,7 @@ GPIO.add_event_detect(
 
 # ─── Video Processing Classes ────────────────────────────────────────
 class VideoStreamer:
-    def __init__(self, model_path: str = "../runs/detect/train2/weights/best.pt"):
+    def __init__(self, model_path: str = "../runs/detect/train2/weights/best.onnx"):
         self.current_count = 0
         self.processing    = False
         self.cap           = None

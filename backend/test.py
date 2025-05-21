@@ -1,3 +1,31 @@
+from onnxruntime.quantization import quantize_dynamic, QuantType
+
+# paths
+fp32_model = "../runs/detect/train2/weights/best.onnx"
+int8_model = "../runs/detect/train2/weights/best_int8.onnx"
+
+# quantize
+quantize_dynamic(
+    model_input=fp32_model,
+    model_output=int8_model,
+    weight_type=QuantType.QInt8,    # or QuantType.QUInt8
+    per_channel=True                # per-channel gives better accuracy
+)
+print("✅ Dynamic INT8 quantization complete!")
+
+
+'''
+# Convert to ONNX
+from ultralytics import YOLO
+
+# load your best weights
+model = YOLO('../runs/detect/train2/weights/best.pt')
+
+# export to ONNX (you can tweak dynamic=True if you want variable input sizes)
+model.export(format='onnx', dynamic=False, imgsz=640)
+'''
+
+'''
 import cv2
 import numpy as np
 
@@ -62,7 +90,7 @@ cv2.imshow("Split Mask", split_mask)
 cv2.imshow("Result: Split Coconuts", output)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
-
+'''
 '''
 import cv2
 import numpy as np
