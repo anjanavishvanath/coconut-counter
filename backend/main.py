@@ -106,7 +106,7 @@ class VideoStreamer:
         self.tracker = Sort(max_age=5, min_hits=3, iou_threshold=0.1)
 
     async def video_stream(self, websocket: WebSocket):
-        self.cap = cv2.VideoCapture("../videos/250_coconuts.mp4") #../videos/rotated_vid.mp4
+        self.cap = cv2.VideoCapture(0) #../videos/250_coconuts.mp4
         self.processing = True
 
         if not self.cap.isOpened():
