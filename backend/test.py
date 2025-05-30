@@ -1,3 +1,4 @@
+'''
 from onnxruntime.quantization import quantize_dynamic, QuantType
 
 # paths
@@ -12,18 +13,19 @@ quantize_dynamic(
     per_channel=True                # per-channel gives better accuracy
 )
 print("✅ Dynamic INT8 quantization complete!")
-
-
 '''
+
+
+
 # Convert to ONNX
 from ultralytics import YOLO
 
 # load your best weights
-model = YOLO('../runs/detect/train2/weights/best.pt')
+model = YOLO('../runs/detect/train3/weights/best.pt')
 
 # export to ONNX (you can tweak dynamic=True if you want variable input sizes)
 model.export(format='onnx', dynamic=False, imgsz=640)
-'''
+
 
 '''
 import cv2

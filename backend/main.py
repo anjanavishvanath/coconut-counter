@@ -37,7 +37,10 @@ import time
 
 # YOLOv8 + SORT
 from ultralytics import YOLO
+from ultralytics.utils import LOGGER
 from sort import Sort  # your local sort.py
+
+LOGGER.setLevel("WARNING")
 
 # ─── GPIO setup ─────────────────────────────────────────────────────
 # BCM pin numbers
@@ -84,7 +87,7 @@ GPIO.add_event_detect(
 
 # ─── Video Processing Classes ────────────────────────────────────────
 class VideoStreamer:
-    def __init__(self, model_path: str = "../runs/detect/train2/weights/best.onnx"):
+    def __init__(self, model_path: str = "../runs/detect/train3/weights/best.onnx"):
         self.current_count = 0
         self.processing    = False
         self.cap           = None
@@ -94,13 +97,13 @@ class VideoStreamer:
         # load your custom YOLOv8 model
         self.model   = YOLO(model_path)
         # init SORT
-        self.tracker = Sort(max_age=5, min_hits=3, iou_threshold=0.3)
+        self.tracker = Sort(max_age=5, min_hits=3, iou_threshold=0.1)
         self.counted_ids = set()
     
     def reset(self):
         self.current_count = 0
         self.counted_ids.clear()
-        self.tracker = Sort(max_age=5, min_hits=3, iou_threshold=0.3)
+        self.tracker = Sort(max_age=5, min_hits=3, iou_threshold=0.1)
 
     async def video_stream(self, websocket: WebSocket):
         self.cap = cv2.VideoCapture("../videos/250_coconuts.mp4") #../videos/rotated_vid.mp4
@@ -171,7 +174,7 @@ class VideoStreamer:
                     # send a single binary frame: [4-byte count][jpeg…]
                     await websocket.send_bytes(count_header + jpg_bytes)
                     
-                    await asyncio.sleep(1/24)  # Control FPS (24 fps)
+                    await asyncio.sleep(1/12)  # Control FPS (24 fps)
                     
             except Exception as e:
                 print(f"Error in video stream: {e}")
