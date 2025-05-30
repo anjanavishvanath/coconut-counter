@@ -35,6 +35,13 @@ import RPi.GPIO as GPIO
 import lgpio
 import time
 
+# YOLOv8 + SORT
+from ultralytics import YOLO
+from ultralytics.utils import LOGGER
+from sort import Sort  # your local sort.py
+
+LOGGER.setLevel("WARNING")
+
 # ─── GPIO setup ─────────────────────────────────────────────────────
 # BCM pin numbers
 START_BUTTON_PIN = 16
@@ -80,137 +87,85 @@ GPIO.add_event_detect(
 
 # ─── Video Processing Classes ────────────────────────────────────────
 class VideoStreamer:
-    def __init__(self):
+    def __init__(self, model_path: str = "../runs/detect/train3/weights/best.onnx"):
         self.current_count = 0
-        self.processing = False
-        self.cap = None
+        self.processing    = False
+        self.cap           = None
+        self.trigger_line_y = 200
+        self.encode_param  = [int(cv2.IMWRITE_JPEG_QUALITY), 50]
 
-        # Color threshold for contours (tuned for brown coconuts)
-        self.lower_brown = (8, 50, 50)
-        self.upper_brown = (30, 255, 255)
-        self.min_contour_area = 1250 # 2500 for application
-
-        # Tracker parameters
-        self.tracked_objects = {}
-        self.next_object_id = 0
-        self.distance_threshold = 150 #make 120 for application, 50 for testing vid
-        self.max_disappeared = 5
-
-        # Trigger line coordinates
-        # self.trigger_line_x = 190 # 190 for webcam, 428 for application
-        self.trigger_line_y = 150
-
-        self.encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 50]
+        # load your custom YOLOv8 model
+        self.model   = YOLO(model_path)
+        # init SORT
+        self.tracker = Sort(max_age=5, min_hits=3, iou_threshold=0.1)
+        self.counted_ids = set()
     
     def reset(self):
-        self.processing = False
         self.current_count = 0
-        self.tracked_objects = {}
-        self.next_object_id = 0
-
-    def process_frame(self, frame):
-        roi = frame.copy()
-        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(hsv, self.lower_brown, self.upper_brown)
-
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        filtered_contours = [c for c in contours if cv2.contourArea(c) > self.min_contour_area]
-
-        current_centroids = []
-        for contour in filtered_contours:
-            M = cv2.moments(contour)
-            if M["m00"] != 0:
-                cx = int(M["m10"] / M["m00"])
-                cy = int(M["m01"] / M["m00"])
-                current_centroids.append((cx, cy))
-                x, y, w, h = cv2.boundingRect(contour)
-                cv2.rectangle(roi, (x, y), (x + w, y + h), (255, 0, 0), 2)
-        
-        # BUILD COST MATRIX between existing tracks and new centroids
-        old_ids = list(self.tracked_objects.keys())
-        old_centroids = [self.tracked_objects[i]["centroid"] for i in old_ids]
-        new_centroids = current_centroids
-        
-        assigned_new = set()
-
-        if old_centroids and new_centroids:
-            cost = np.zeros((len(old_centroids), len(new_centroids)), dtype=np.float32)
-            for i, oc in enumerate(old_centroids):
-                for j, nc in enumerate(new_centroids):
-                    cost[i, j] = math.hypot(oc[0]-nc[0], oc[1]-nc[1])
-
-            # Hungarian assignment
-            row_ind, col_ind = linear_sum_assignment(cost)
-
-            
-            # match up those under threshold
-            for r, c in zip(row_ind, col_ind):
-                if cost[r, c] < self.distance_threshold:
-                    track_id = old_ids[r]
-                    self.tracked_objects[track_id]["previous_centroid"] = self.tracked_objects[track_id]["centroid"]
-                    self.tracked_objects[track_id]["centroid"] = new_centroids[c]
-                    self.tracked_objects[track_id]["disappeared"] = 0
-                    assigned_new.add(c)
-                else:
-                    # too far: mark that track as disappeared
-                    track_id = old_ids[r]
-                    self.tracked_objects[track_id]["disappeared"] += 1
-
-            # any old track not in row_ind should increment disappeared
-            unmatched_old = set(old_ids) - { old_ids[r] for r in row_ind }
-            for track_id in unmatched_old:
-                self.tracked_objects[track_id]["disappeared"] += 1
-
-        else:
-            # if no matching to do, just increment disappeared for all existing
-            for track_id, data in self.tracked_objects.items():
-                data["disappeared"] += 1
-
-        # CLEAN UP disappeared
-        to_del = [tid for tid,d in self.tracked_objects.items() if d["disappeared"]>self.max_disappeared]
-        for tid in to_del:
-            del self.tracked_objects[tid]
-
-        # NEW detections: any centroid index not in assigned_new
-        for idx, centroid in enumerate(new_centroids):
-            if idx not in assigned_new:
-                self.tracked_objects[self.next_object_id] = {
-                    "centroid": centroid,
-                    "previous_centroid": centroid,
-                    "disappeared": 0,
-                    "counted": False
-                }
-                self.next_object_id += 1
-
-        # … now your crossing‐the‐line counting on self.tracked_objects …
-        for object_id, data in self.tracked_objects.items():
-            cx, cy = data["centroid"]
-            prev_cx, prev_cy = data["previous_centroid"]
-            if not data["counted"] and prev_cy >= self.trigger_line_y > cy:
-                self.current_count += 1
-                data["counted"] = True
-        
-            # cv2.circle(roi, (cx, cy), 4, (0, 0, 255), -1)
-            # cv2.putText(roi, str(object_id), (cx - 10, cy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
-
-        cv2.line(roi, (0, self.trigger_line_y), (roi.shape[1], self.trigger_line_y), (0, 0, 255), 2)
-        cv2.putText(roi, f"Coconuts: {self.current_count}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-        return roi
+        self.counted_ids.clear()
+        self.tracker = Sort(max_age=5, min_hits=3, iou_threshold=0.1)
 
     async def video_stream(self, websocket: WebSocket):
+        self.cap = cv2.VideoCapture("../videos/250_coconuts.mp4") #../videos/rotated_vid.mp4
         self.processing = True
+
+        if not self.cap.isOpened():
+            raise HTTPException(status_code=500, detail="Could not open video source")
+        
         while self.processing:
-            self.cap = cv2.VideoCapture("../videos/rotated_vid.mp4") #../videos/rotated_vid.mp4
             try:
                 while self.cap.isOpened():
                     ret, frame = self.cap.read() 
                     # frame.shape == (480, 640, 3) for webcam
-                    frame = cv2.resize(frame, (320, 240)) #compensated for rotaed frame
                     if not ret:
                         break
 
-                    processed_frame = self.process_frame(frame)
-                    _, buffer = cv2.imencode('.jpg', processed_frame, self.encode_param)
+                    # 1) run YOLOv8 inference
+                    results = self.model(frame, imgsz=640, conf=0.3)[0]
+                    # Convert detections to [x1, y1, x2, y2, confidence] format
+                    if results.boxes:
+                        dets = [
+                            [*map(int, box.xyxy[0].tolist()), box.conf.item()]  # Convert tensor to list first
+                            for box in results.boxes
+                        ]
+                    else:
+                        dets = []
+
+                    # Create empty array with correct shape when no detections
+                    dets_np = np.empty((0, 5), dtype=np.float32)  
+                    if dets:
+                        dets_np = np.array(dets, dtype=np.float32)
+                        # Ensure 2D array even for single detection
+                        if dets_np.ndim == 1:
+                            dets_np = dets_np.reshape(1, -1)
+
+                    # 3) SORT update → tracked boxes + IDs
+                    if dets_np.size > 0 and dets_np.shape[1] != 5:
+                        print(f"Unexpected detection shape: {dets_np.shape}")
+                        continue  # Skip this frame's tracking update
+                    tracked = self.tracker.update(dets_np)
+
+                    # 4) draw & count
+                    for x1,y1,x2,y2,tid in tracked:
+                        x1,y1,x2,y2,tid = map(int, (x1,y1,x2,y2,tid))
+                        cx, cy = (x1+x2)//2, (y1+y2)//2
+
+                        cv2.rectangle(frame, (x1,y1), (x2,y2), (0,255,0), 2)
+                        cv2.putText(frame, f"{tid}", (x1, y1-10),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+
+                        if tid not in self.counted_ids and cy < self.trigger_line_y:
+                            self.counted_ids.add(tid)
+                            self.current_count += 1
+
+                    # 5) draw trigger line & total
+                    cv2.line(frame, (0, self.trigger_line_y),
+                                   (frame.shape[1], self.trigger_line_y),
+                                   (0,0,255), 2)
+                    cv2.putText(frame, f"Count: {self.current_count}",
+                                (10,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
+
+                    _, buffer = cv2.imencode('.jpg', frame, self.encode_param)
                     
                     jpg_bytes = buffer.tobytes()
                     #pack the 32 bit count as a 4 byte binary string
@@ -219,7 +174,7 @@ class VideoStreamer:
                     # send a single binary frame: [4-byte count][jpeg…]
                     await websocket.send_bytes(count_header + jpg_bytes)
                     
-                    await asyncio.sleep(1/24)  # Control FPS (24 fps)
+                    await asyncio.sleep(1/12)  # Control FPS (24 fps)
                     
             except Exception as e:
                 print(f"Error in video stream: {e}")
@@ -368,6 +323,3 @@ async def websocket_endpoint(websocket: WebSocket):
 # ─── WebSocket connection handler ────────────────────────────────
 if __name__ == "__main__":
     uvicorn.run(app, host="localhost", port=8000)
-
-        
-		
