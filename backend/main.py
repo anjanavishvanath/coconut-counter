@@ -35,12 +35,12 @@ import RPi.GPIO as GPIO
 import lgpio
 import time
 
-# YOLOv8 + SORT
-from ultralytics import YOLO
-from ultralytics.utils import LOGGER
+# watershed + SORT
+from skimage.feature import peak_local_max
+from skimage.segmentation import watershed
+from scipy import ndimage
 from sort import Sort  # your local sort.py
 
-LOGGER.setLevel("WARNING")
 
 # ─── GPIO setup ─────────────────────────────────────────────────────
 # BCM pin numbers
@@ -87,26 +87,24 @@ GPIO.add_event_detect(
 
 # ─── Video Processing Classes ────────────────────────────────────────
 class VideoStreamer:
-    def __init__(self, model_path: str = "../runs/detect/train3/weights/best.onnx"):
+    def __init__(self):
         self.current_count = 0
         self.processing    = False
         self.cap           = None
         self.trigger_line_y = 200
         self.encode_param  = [int(cv2.IMWRITE_JPEG_QUALITY), 50]
 
-        # load your custom YOLOv8 model
-        self.model   = YOLO(model_path)
         # init SORT
-        self.tracker = Sort(max_age=5, min_hits=3, iou_threshold=0.1)
+        self.tracker = Sort(max_age=5, min_hits=3, iou_threshold=0.25)
         self.counted_ids = set()
     
     def reset(self):
         self.current_count = 0
         self.counted_ids.clear()
-        self.tracker = Sort(max_age=5, min_hits=3, iou_threshold=0.1)
+        self.tracker = Sort(max_age=5, min_hits=3, iou_threshold=0.25)
 
     async def video_stream(self, websocket: WebSocket):
-        self.cap = cv2.VideoCapture(0) #../videos/250_coconuts.mp4
+        self.cap = cv2.VideoCapture("../videos/250_coconuts.mp4") #"../videos/250_coconuts.mp4"
         self.processing = True
 
         if not self.cap.isOpened():
@@ -120,52 +118,90 @@ class VideoStreamer:
                     if not ret:
                         break
 
-                    # 1) run YOLOv8 inference
-                    results = self.model(frame, imgsz=640, conf=0.3)[0]
-                    # Convert detections to [x1, y1, x2, y2, confidence] format
-                    if results.boxes:
-                        dets = [
-                            [*map(int, box.xyxy[0].tolist()), box.conf.item()]  # Convert tensor to list first
-                            for box in results.boxes
-                        ]
+                    original = frame.copy()  # Keep original frame for drawing
+
+                    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+                    lower_brown = np.array([8, 50, 40])
+                    upper_brown = np.array([30, 255, 255])
+
+                    lower_light = np.array([0, 0, 160])
+                    upper_light = np.array([40, 60, 255])
+
+                    outer_mask = cv2.inRange(hsv, lower_brown, upper_brown)
+                    inner_mask = cv2.inRange(hsv, lower_light, upper_light)
+
+                    final_mask = cv2.bitwise_or(outer_mask, inner_mask)
+                    eroded_mask = cv2.erode(final_mask, None, iterations=3)
+
+                    D = ndimage.distance_transform_edt(eroded_mask)
+                    localMax = peak_local_max(D, min_distance=20, labels=eroded_mask)
+
+                    marker_mask = np.zeros(D.shape, dtype=bool)
+                    if localMax.shape[0] > 0:
+                        marker_mask[tuple(localMax.T)] = True
+                    
+                    markers, _ = ndimage.label(marker_mask)
+                    labels = watershed(-D, markers, mask=eroded_mask) 
+
+                    detections = []
+
+                    for label in np.unique(labels):
+                        if label == 0:
+                            continue
+
+                        mask = np.zeros(eroded_mask.shape, dtype="uint8")
+                        mask[labels == label] = 255
+
+                        cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                        cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+                        if len(cnts) == 0:
+                            continue
+
+                        c = max(cnts, key=cv2.contourArea)
+
+                        if cv2.contourArea(c) < 4000:
+                            continue
+
+                        #(optional) draw contours and labels
+                        # ((xa, ya), ra) = cv2.minEnclosingCircle(c)
+                        # cv2.circle(original, (int(xa), int(ya)), int(ra), (255, 0, 0), 2)
+
+                        (x, y, w, h) = cv2.boundingRect(c)
+                        detections.append([x, y, x + w, y + h, 1.0])  # last value is a confidence score
+
+                    #if no detections, create an empty array of shape (0, 5)
+                    if len(detections) > 0:
+                        detections_np = np.array(detections, dtype=np.float32)
                     else:
-                        dets = []
+                        detections_np = np.empty((0, 5), dtype=np.float32)
+                    
+                    tracked_objects = self.tracker.update(detections_np)
+                    
+                    # 4) draw tracked objects
+                    for d in tracked_objects:
+                        x1, y1, x2, y2, obj_id = d.astype(int)
+                        cv2.rectangle(original, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                        # cv2.putText(original, f"ID {int(obj_id)}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
-                    # Create empty array with correct shape when no detections
-                    dets_np = np.empty((0, 5), dtype=np.float32)  
-                    if dets:
-                        dets_np = np.array(dets, dtype=np.float32)
-                        # Ensure 2D array even for single detection
-                        if dets_np.ndim == 1:
-                            dets_np = dets_np.reshape(1, -1)
+                        #computer the center of the bounding box
+                        center_x, center_y = (x1 + x2) // 2, (y1 + y2) // 2
 
-                    # 3) SORT update → tracked boxes + IDs
-                    if dets_np.size > 0 and dets_np.shape[1] != 5:
-                        print(f"Unexpected detection shape: {dets_np.shape}")
-                        continue  # Skip this frame's tracking update
-                    tracked = self.tracker.update(dets_np)
-
-                    # 4) draw & count
-                    for x1,y1,x2,y2,tid in tracked:
-                        x1,y1,x2,y2,tid = map(int, (x1,y1,x2,y2,tid))
-                        cx, cy = (x1+x2)//2, (y1+y2)//2
-
-                        cv2.rectangle(frame, (x1,y1), (x2,y2), (0,255,0), 2)
-                        cv2.putText(frame, f"{tid}", (x1, y1-10),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
-
-                        if tid not in self.counted_ids and cy < self.trigger_line_y:
-                            self.counted_ids.add(tid)
+                        #if it has not been counted yet and is above the trigger line
+                        if(obj_id not in self.counted_ids and center_y < self.trigger_line_y):
                             self.current_count += 1
+                            self.counted_ids.add(obj_id)
+
+                        # cv2.putText(original, f"Count: {self.current_count}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
 
                     # 5) draw trigger line & total
-                    cv2.line(frame, (0, self.trigger_line_y),
+                    cv2.line(original, (0, self.trigger_line_y),
                                    (frame.shape[1], self.trigger_line_y),
                                    (0,0,255), 2)
-                    cv2.putText(frame, f"Count: {self.current_count}",
+                    cv2.putText(original, f"Count: {self.current_count}",
                                 (10,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
 
-                    _, buffer = cv2.imencode('.jpg', frame, self.encode_param)
+                    _, buffer = cv2.imencode('.jpg', original, self.encode_param)
                     
                     jpg_bytes = buffer.tobytes()
                     #pack the 32 bit count as a 4 byte binary string
@@ -174,7 +210,7 @@ class VideoStreamer:
                     # send a single binary frame: [4-byte count][jpeg…]
                     await websocket.send_bytes(count_header + jpg_bytes)
                     
-                    await asyncio.sleep(1/12)  # Control FPS (24 fps)
+                    await asyncio.sleep(1/50)  # Control FPS (50 fps)
                     
             except Exception as e:
                 print(f"Error in video stream: {e}")
