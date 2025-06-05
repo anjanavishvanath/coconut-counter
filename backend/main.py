@@ -1,17 +1,11 @@
 import cv2
-import math
 import asyncio
-from contextlib import suppress
 from fastapi import FastAPI, WebSocket, HTTPException, BackgroundTasks, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+import numpy as np
 # import base64
 import struct
-
-# Testing
-from scipy.optimize import linear_sum_assignment
-import numpy as np
-
 
 # Moduoles for report generation and file handling
 import csv
@@ -91,7 +85,7 @@ class VideoStreamer:
         self.current_count = 0
         self.processing    = False
         self.cap           = None
-        self.trigger_line_y = 200
+        self.trigger_line_y = 100
         self.encode_param  = [int(cv2.IMWRITE_JPEG_QUALITY), 50]
 
         # init SORT
@@ -107,6 +101,7 @@ class VideoStreamer:
         self.cap = cv2.VideoCapture("../videos/250_coconuts.mp4") #"../videos/250_coconuts.mp4"
         self.processing = True
 
+
         if not self.cap.isOpened():
             raise HTTPException(status_code=500, detail="Could not open video source")
         
@@ -115,6 +110,7 @@ class VideoStreamer:
                 while self.cap.isOpened():
                     ret, frame = self.cap.read() 
                     # frame.shape == (480, 640, 3) for webcam
+                    frame = cv2.resize(frame, (320, 240))  
                     if not ret:
                         break
 
@@ -160,7 +156,7 @@ class VideoStreamer:
 
                         c = max(cnts, key=cv2.contourArea)
 
-                        if cv2.contourArea(c) < 4000:
+                        if cv2.contourArea(c) < 1500:
                             continue
 
                         #(optional) draw contours and labels
@@ -195,11 +191,8 @@ class VideoStreamer:
                         # cv2.putText(original, f"Count: {self.current_count}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
 
                     # 5) draw trigger line & total
-                    cv2.line(original, (0, self.trigger_line_y),
-                                   (frame.shape[1], self.trigger_line_y),
-                                   (0,0,255), 2)
-                    cv2.putText(original, f"Count: {self.current_count}",
-                                (10,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
+                    cv2.line(original, (0, self.trigger_line_y), (frame.shape[1], self.trigger_line_y), (0,0,255), 2)
+                    # cv2.putText(original, f"Count: {self.current_count}", (10,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
 
                     _, buffer = cv2.imencode('.jpg', original, self.encode_param)
                     
@@ -209,8 +202,8 @@ class VideoStreamer:
 
                     # send a single binary frame: [4-byte count][jpeg…]
                     await websocket.send_bytes(count_header + jpg_bytes)
-                    
-                    await asyncio.sleep(1/50)  # Control FPS (50 fps)
+                                        
+                    await asyncio.sleep(1/60)  # Control FPS (60 fps)
                     
             except Exception as e:
                 print(f"Error in video stream: {e}")
