@@ -85,20 +85,20 @@ class VideoStreamer:
         self.current_count = 0
         self.processing    = False
         self.cap           = None
-        self.trigger_line_y = 100
+        self.trigger_line_y = 120
         self.encode_param  = [int(cv2.IMWRITE_JPEG_QUALITY), 50]
 
         # init SORT
-        self.tracker = Sort(max_age=5, min_hits=3, iou_threshold=0.25)
+        self.tracker = Sort(max_age=5, min_hits=1, iou_threshold=0.25)
         self.counted_ids = set()
     
     def reset(self):
         self.current_count = 0
         self.counted_ids.clear()
-        self.tracker = Sort(max_age=5, min_hits=3, iou_threshold=0.25)
+        self.tracker = Sort(max_age=5, min_hits=1, iou_threshold=0.25)
 
     async def video_stream(self, websocket: WebSocket):
-        self.cap = cv2.VideoCapture("../videos/250_coconuts.mp4") #"../videos/250_coconuts.mp4"
+        self.cap = cv2.VideoCapture(0) #"../videos/250_coconuts.mp4"
         self.processing = True
 
 
@@ -203,7 +203,7 @@ class VideoStreamer:
                     # send a single binary frame: [4-byte count][jpeg…]
                     await websocket.send_bytes(count_header + jpg_bytes)
                                         
-                    await asyncio.sleep(1/60)  # Control FPS (60 fps)
+                    await asyncio.sleep(1/100) 
                     
             except Exception as e:
                 print(f"Error in video stream: {e}")
