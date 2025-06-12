@@ -1,3 +1,4 @@
+
 import cv2
 import asyncio
 from fastapi import FastAPI, WebSocket, HTTPException, BackgroundTasks, WebSocketDisconnect
@@ -23,7 +24,7 @@ from email.message import EmailMessage
 # Modules for GPIO simulation
 import sys
 # Add stubs/ to the front of module search path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'stubs'))
+#sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'stubs'))
 # Modules for GPIO manipulation in Raspberry Pi 
 import RPi.GPIO as GPIO 
 import lgpio
@@ -156,12 +157,12 @@ class VideoStreamer:
 
                         c = max(cnts, key=cv2.contourArea)
 
-                        if cv2.contourArea(c) < 1500:
+                        if cv2.contourArea(c) < 1000:
                             continue
 
                         #(optional) draw contours and labels
-                        # ((xa, ya), ra) = cv2.minEnclosingCircle(c)
-                        # cv2.circle(original, (int(xa), int(ya)), int(ra), (255, 0, 0), 2)
+                        ((xa, ya), ra) = cv2.minEnclosingCircle(c)
+                        cv2.circle(original, (int(xa), int(ya)), int(ra), (255, 0, 0), 2)
 
                         (x, y, w, h) = cv2.boundingRect(c)
                         detections.append([x, y, x + w, y + h, 1.0])  # last value is a confidence score
@@ -203,7 +204,7 @@ class VideoStreamer:
                     # send a single binary frame: [4-byte count][jpeg…]
                     await websocket.send_bytes(count_header + jpg_bytes)
                                         
-                    await asyncio.sleep(1/100) 
+                    await asyncio.sleep(1/100)  # Control FPS (60 fps)
                     
             except Exception as e:
                 print(f"Error in video stream: {e}")
