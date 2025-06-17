@@ -14,32 +14,33 @@ export default function App() {
   // Bucket related states
   const bktsA = Array.from({ length: 14 }, (_, i) => ({ id: i + 1, count: 0, set_value: 400 }));
   const [buckets, setBuckets] = useState(bktsA);
-  const [activeBucket, setActiveBucket] = useState(1);
   const [filledBucketsCount, setFilledBucketsCount] = useState(0);
-  const activeBucketRef = useRef(activeBucket);
   const filledBucketsCountRef = useRef(filledBucketsCount);
-
-  // Refill mode
-  const [refillingMode, setRefillingMode] = useState(false);
-  const refillingModeRef = useRef(refillingMode);
 
   // Keyboard related states
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-  const [selectedBucket, setSelectedBucket] = useState(null);
+  const [selectedBucket, setSelectedBucket] = useState(1);
   const selectedBucketRef = useRef(selectedBucket);
   const [keyboardValue, setKeyboardValue] = useState(0);
 
   // Keep refs in sync
-  useEffect(() => { activeBucketRef.current = activeBucket; }, [activeBucket]);
   useEffect(() => { filledBucketsCountRef.current = filledBucketsCount; }, [filledBucketsCount]);
-  useEffect(() => { refillingModeRef.current = refillingMode; }, [refillingMode]);
   useEffect(() => { selectedBucketRef.current = selectedBucket; }, [selectedBucket]);
   useEffect(() => { isStreamingRef.current = isStreaming }, [isStreaming]);
   useEffect(() => {
-  return () => {
-    if (imgSrc) URL.revokeObjectURL(imgSrc);
-  };
-}, [imgSrc]);
+    return () => {
+      if (imgSrc) URL.revokeObjectURL(imgSrc);
+    };
+  }, [imgSrc]); //revoke old object URLs to free memory
+
+  //----------Resetting Coconut count for new bucket selection----------//
+  useEffect(() => {
+    const prevCount = buckets.find(b => b.id === selectedBucket)?.count ?? 0;
+    const baseline = totalCoconutCount - prevCount;
+    setFilledBucketsCount(baseline);
+    filledBucketsCountRef.current = baseline;
+  }, [selectedBucket, totalCoconutCount, buckets]);
+
 
   //Establish web socket at page load
   useEffect(() => {
@@ -57,7 +58,7 @@ export default function App() {
           // clear any lingering UI
           setTotalCoconutCount(0);
           setImgSrc("");
-          setActiveBucket(1);
+          setSelectedBucket(1);
           setFilledBucketsCount(0);
         }
       } else if (isStreamingRef.current) {
@@ -76,52 +77,30 @@ export default function App() {
           setTotalCoconutCount(count);
           setImgSrc(url);
 
-          // bucket logic
-        const active = activeBucketRef.current;
-        const filledCount = filledBucketsCountRef.current;
-        const isRefill = refillingModeRef.current;
-        const sel = selectedBucketRef.current;
+          const currentBucket = selectedBucketRef.current;
+          const filledCount = filledBucketsCountRef.current;
 
-        setBuckets((prev) => {
-          let newActive = active;
-          const updated = prev.map((b) => {
-            if (b.id === active) {
-              const newCount = Math.max(0, count - filledCount);
-              // initial fill mode: move to next bucket
-              if (!isRefill && newCount >= b.set_value) {
-                newActive = Math.min(prev.length, b.id + 1);
+          setBuckets((prevBuckets) => {
+            const updatedBuckets = prevBuckets.map((bucket) => {
+              if (bucket.id === currentBucket) {
+                const newCount = Math.max(0, count - filledCount);
+
+                // stop the conveyor when the bucket is full
+                if (newCount >= bucket.set_value) {
+                  console.log(`Bucket ${bucket.id} is full, stopping conveyor.`);
+                  ws.current.send("bucket_full");
+                }
+
+                return { ...bucket, count: newCount };
               }
-              // stop conveyor when full
-              if (newCount >= b.set_value) {
-                console.log("Bucket full, stopping conveyor");
-                ws.current.send("bucket_full");
-              }
-              // refill mode: jump to selected bucket
-              if (isRefill && sel != null) {
-                newActive = sel;
-              }
-              // when last bucket full => enter refill mode
-              if (b.id === prev.length && newCount >= b.set_value) {
-                setRefillingMode(true);
-              }
-              return { ...b, count: newCount };
-            }
-            return b;
+              return bucket;
+            });
+
+
+            return updatedBuckets;
           });
 
-          if (newActive !== active) {
-            setActiveBucket(newActive);
-            // recalc filledBucketsCount
-            const newFilled = !isRefill
-              ? updated
-                .filter((x) => x.id < newActive)
-                .reduce((s, x) => s + x.count, 0)
-              : updated.reduce((s, x) => s + x.count, 0) - updated[newActive - 1].count;
-            setFilledBucketsCount(newFilled);
-          }
 
-          return updated;
-        });
         };
         reader.readAsArrayBuffer(event.data);
       }
@@ -141,7 +120,12 @@ export default function App() {
     // console.log("WS readyState:", ws.current?.readyState); // 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
 
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
-      console.warn("WebSocket is not open. Cannot send message.");
+      alert("Waiting for server connection...");
+      return;
+    }
+
+    if (selectedBucketRef.current === null) {
+      alert("Please select a bucket first.");
       return;
     }
 
@@ -160,15 +144,33 @@ export default function App() {
   }
 
   const handleFinish = async () => {
+    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
+      alert("WebSocket is not open. Cannot save report.");
+      return;
+    }
+
     try {
-      await fetch("http://localhost:8000/save_report", {
+      const response = await fetch("http://localhost:8000/save_report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ buckets }),
       });
-      handleReset();
+
+      if (!response.ok) {
+        // Server returned a non-2xx status
+        const errorText = await response.text();
+        console.error("Server error saving report:", errorText);
+        alert(`❌ Failed to save report: ${response.status} ${response.statusText}`);
+        return;
+      }
+
+      // Parse the JSON if you want the saved path back
+      const data = await response.json();
+      console.log("Report saved:", data);
+      alert(`✅ Report saved successfully to:\n${data.saved_to}`);
     } catch (e) {
       console.error("Error saving report:", e);
+      alert(`❌ Error saving report: ${e.message}`);
     }
   };
 
@@ -182,17 +184,13 @@ export default function App() {
 
     setBuckets(bktsA);
 
-    setActiveBucket(1);
     setFilledBucketsCount(0);
-    setRefillingMode(false);
 
     setIsKeyboardVisible(false);
     setSelectedBucket(null);
     setKeyboardValue(0);
 
-    activeBucketRef.current = 1;
     filledBucketsCountRef.current = 0;
-    refillingModeRef.current = false;
     selectedBucketRef.current = null;
   }
 
@@ -251,7 +249,7 @@ export default function App() {
             />
           )}
           <h2>Total Coconuts: {totalCoconutCount}</h2>
-          <h2>Active Bucket: {activeBucket}</h2>
+          <h2>Active Bucket: {selectedBucket}</h2>
           {imgSrc && <img className="video_frame" src={imgSrc} alt="Stream" />}
         </div>
         <div className="buckets_container">
@@ -262,12 +260,10 @@ export default function App() {
               count={bucket.count}
               set_value={bucket.set_value}
               isFilled={bucket.count >= bucket.set_value}
-              isActive={bucket.id === activeBucket}
               isSelected={bucket.id === selectedBucket}
               handleClick={() => {
                 if (selectedBucket === bucket.id) {
-                  setSelectedBucket(null);
-                  setIsKeyboardVisible(false);
+                  setIsKeyboardVisible(prev => !prev);
                 } else {
                   setSelectedBucket(bucket.id);
                   setIsKeyboardVisible(true);

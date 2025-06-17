@@ -24,7 +24,7 @@ from email.message import EmailMessage
 # Modules for GPIO simulation
 import sys
 # Add stubs/ to the front of module search path
-#sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'stubs'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'stubs'))
 # Modules for GPIO manipulation in Raspberry Pi 
 import RPi.GPIO as GPIO 
 import lgpio
@@ -42,13 +42,16 @@ from sort import Sort  # your local sort.py
 START_BUTTON_PIN = 16
 STOP_BUTTON_PIN  = 12
 CONVEYOR_RELAY_PIN = 23
+BUZZEER_PIN = 24
 
 # Open the GPIO chip (always 0 on Pi)
 chip = lgpio.gpiochip_open(0)
 
-# Claim the relay pin as an output (default HIGH/off)
+# Claim the output pins (default LOW/off)
 lgpio.gpio_claim_output(chip, CONVEYOR_RELAY_PIN)
-lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+lgpio.gpio_claim_output(chip, BUZZEER_PIN)
+lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+lgpio.gpio_write(chip, BUZZEER_PIN, 0)
 
 # ─── RPi.GPIO setup for the button ────────────────────────────────────────
 GPIO.setmode(GPIO.BCM)
@@ -58,12 +61,13 @@ GPIO.setup(STOP_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 def start_button_pressed(channel):
     """Callback: button pressed → turn conveyor on."""
     print("Button pressed, starting conveyor…")
-    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+    lgpio.gpio_write(chip, BUZZEER_PIN, 0)  # turn off buzzer
     
 def stop_button_pressed(channel):
     """Callback: button pressed → turn conveyor off."""
     print("Button pressed, stopping conveyor…")
-    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
 
 # ─── Install a falling-edge interrupt with 200 ms debounce ─────────────────
 GPIO.add_event_detect(
@@ -99,7 +103,7 @@ class VideoStreamer:
         self.tracker = Sort(max_age=5, min_hits=1, iou_threshold=0.25)
 
     async def video_stream(self, websocket: WebSocket):
-        self.cap = cv2.VideoCapture(0) #"../videos/250_coconuts.mp4"
+        self.cap = cv2.VideoCapture("../videos/250_coconuts.mp4") #"../videos/250_coconuts.mp4"
         self.processing = True
 
 
@@ -316,10 +320,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 if stream_task is None or stream_task.done():
                     stream_task = asyncio.create_task(video_streamer.video_stream(websocket))
                 await websocket.send_text("started")
-                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
 
             elif data in ("stop", "bucket_full", "reset"):
-                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN,1)
+                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
                 if data == "stop":
                     video_streamer.stop_streaming()
                     if stream_task and not stream_task.done():
@@ -335,14 +339,15 @@ async def websocket_endpoint(websocket: WebSocket):
                         stream_task.cancel()
                     video_streamer.reset()
                     await websocket.send_text("reset")
-            
+                lgpio.gpio_write(chip, BUZZEER_PIN, 1)
+                await asyncio.sleep(3)
+                lgpio.gpio_write(chip, BUZZEER_PIN, 0)
             else:
                 print(f"[WS] Unknown command: {data!r}")
 
 
     except WebSocketDisconnect:
         print("Client disconnected")
-        #stop conveyor?
     
     finally:
         # clean up
