@@ -95,12 +95,8 @@ export default function App() {
               }
               return bucket;
             });
-
-
             return updatedBuckets;
           });
-
-
         };
         reader.readAsArrayBuffer(event.data);
       }
