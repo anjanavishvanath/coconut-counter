@@ -109,18 +109,13 @@ button{
   margin: 5px;
 }
 
-.active{
-  background: #0056b3;
-  color: #fff
-}
-
 .filled{
   background: #28a745;
   color: #fff
 }
 
 .selected{
-  background: #111;
+  background: #0056b3;
   color: #fff;
   width: 90%;
   height: 90%;
