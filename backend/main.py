@@ -30,6 +30,9 @@ import RPi.GPIO as GPIO
 import lgpio
 import time
 
+#pi modules to enable shutdown and USB save
+import subprocess
+
 # watershed + SORT
 from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
@@ -303,6 +306,14 @@ async def save_report(payload: ReportPayload, background_tasks: BackgroundTasks)
     # background_tasks.add_task(send_report_email, report_file) # uncomment to send email
 
     return {"status": "ok", "saved_to": str(report_file)}
+
+@app.post("/shutdown")
+async def shutdown():
+    try:
+        subprocess.run(["sudo", "shutdown", "now"], check=True)
+        return {"status":"shutdown"}
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=500, detail=f"Shutdown failed: {e}")
 
 # ─── Websocket functions ──────────────────────────────────────────
 @app.websocket("/ws")

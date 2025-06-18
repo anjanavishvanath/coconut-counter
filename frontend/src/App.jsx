@@ -190,6 +190,26 @@ export default function App() {
     selectedBucketRef.current = null;
   }
 
+  const handleShutdown = async () => {
+    if (!window.confirm("Are you sure you want to shut down the Raspberry Pi?")) return;
+
+    try {
+      const res = await fetch("http://localhost:8000/shutdown", {
+        method: "POST",
+      });
+      const data = await res.json();
+
+      if (data.status === "shutting down") {
+        alert("🔌 Raspberry Pi is shutting down...");
+      } else {
+        alert("⚠️ Failed to shut down: " + data.detail);
+      }
+    } catch (err) {
+      console.error("Shutdown error:", err);
+      alert("❌ Shutdown failed: " + err.message);
+    }
+  };
+
   //-------Keyboard Functions ------------------------------------//
   const handleKeyboardInput = (input) => {
     const v = parseInt(input) || 0;
@@ -225,12 +245,13 @@ export default function App() {
   return (
     <>
       <header>
-        <h1>Coconut Counter</h1>
+        <h1>Counter</h1>
         <nav>
           <button className="startBtn" onClick={handleStartStop}>{isStreaming ? "Stop" : "Start"}</button>
           <button className="setBtn" onClick={handleSetAll}>Set All</button>
           <button className="finishButton" onClick={handleFinish}>Finish</button>
           <button className="resetBtn" onClick={handleReset}>Reset</button>
+          <button className="resetBtn" onClick={handleShutdown}>Shutdown</button>
         </nav>
       </header>
       <div className="main_container">
