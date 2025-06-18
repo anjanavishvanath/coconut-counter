@@ -74,14 +74,14 @@ GPIO.add_event_detect(
     START_BUTTON_PIN,
     GPIO.FALLING,              # detect HIGH → LOW transitions
     callback=start_button_pressed,
-    bouncetime=200             # debounce in milliseconds
+    bouncetime=10             # debounce in milliseconds
 )
 
 GPIO.add_event_detect(
     STOP_BUTTON_PIN,
     GPIO.FALLING,              # detect HIGH → LOW transitions
     callback=stop_button_pressed,
-    bouncetime=200             # debounce in milliseconds
+    bouncetime=10             # debounce in milliseconds
 )
 
 # ─── Video Processing Classes ────────────────────────────────────────
@@ -326,6 +326,7 @@ async def websocket_endpoint(websocket: WebSocket):
             elif data == "stop":
                 # Stop conveyor & video
                 lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+                time.sleep(0.5) 
                 video_streamer.stop_streaming()
                 if stream_task and not stream_task.done():
                     stream_task.cancel()
@@ -335,6 +336,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Only turn off the conveyor once, do not restart it here
                 print("Bucket full: Stopping Conveyor")
                 lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+                time.sleep(0.5)  # give it a moment to stop
+                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+                time.sleep(0.5)  # give it a moment to stop
                 await websocket.send_text("bucket_stopped")
 
             elif data == "reset":
