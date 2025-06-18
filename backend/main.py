@@ -61,9 +61,10 @@ GPIO.setup(STOP_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 def start_button_pressed(channel):
     """Callback: button pressed → turn conveyor on."""
     print("Button pressed, starting conveyor…")
-    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
-    lgpio.gpio_write(chip, BUZZEER_PIN, 0)  # turn off buzzer
-    
+    if GPIO.input(START_BUTTON_PIN) == 0:
+        lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+        lgpio.gpio_write(chip, BUZZEER_PIN, 0)  # turn off buzzer
+
 def stop_button_pressed(channel):
     """Callback: button pressed → turn conveyor off."""
     print("Button pressed, stopping conveyor…")
@@ -326,7 +327,6 @@ async def websocket_endpoint(websocket: WebSocket):
             elif data == "stop":
                 # Stop conveyor & video
                 lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
-                time.sleep(0.5) 
                 video_streamer.stop_streaming()
                 if stream_task and not stream_task.done():
                     stream_task.cancel()
@@ -336,9 +336,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Only turn off the conveyor once, do not restart it here
                 print("Bucket full: Stopping Conveyor")
                 lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
-                time.sleep(0.5)  # give it a moment to stop
-                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
-                time.sleep(0.5)  # give it a moment to stop
                 await websocket.send_text("bucket_stopped")
 
             elif data == "reset":
