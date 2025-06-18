@@ -310,58 +310,50 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     video_streamer = VideoStreamer()
     stream_task = None
-
+    
     try:
         while True:
             data = await websocket.receive_text()
             print(f"[WS] got command ➞ {data!r}")
 
             if data == "start":
-                # Launch video & start conveyor
                 if stream_task is None or stream_task.done():
                     stream_task = asyncio.create_task(video_streamer.video_stream(websocket))
-                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
                 await websocket.send_text("started")
+                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
 
-            elif data == "stop":
-                # Stop conveyor & video
+            elif data in ("stop", "bucket_full", "reset"):
                 lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
-                video_streamer.stop_streaming()
-                if stream_task and not stream_task.done():
-                    stream_task.cancel()
-                await websocket.send_text("stopped")
+                if data == "stop":
+                    video_streamer.stop_streaming()
+                    if stream_task and not stream_task.done():
+                        stream_task.cancel()
+                    await websocket.send_text("stopped")
 
-            elif data == "bucket_full":
-                # Only turn off the conveyor once, do not restart it here
-                print("Bucket full: Stopping Conveyor")
-                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
-                await websocket.send_text("bucket_stopped")
-
-            elif data == "reset":
-                # Full reset: stop, clear counts, etc.
-                lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
-                video_streamer.stop_streaming()
-                if stream_task and not stream_task.done():
-                    stream_task.cancel()
-                video_streamer.reset()
-                await websocket.send_text("reset")
-
+                elif data == "bucket_full":
+                    print("Bucket full: Stopping Conveyor")
+        
+                elif data == "reset":
+                    video_streamer.stop_streaming()
+                    if stream_task and not stream_task.done():
+                        stream_task.cancel()
+                    video_streamer.reset()
+                    await websocket.send_text("reset")
+                # lgpio.gpio_write(chip, BUZZEER_PIN, 1)
+                # await asyncio.sleep(3)
+                # lgpio.gpio_write(chip, BUZZEER_PIN, 0)
             else:
-                # We got something unexpected — just ignore it.
-                print("Unknown command, ignoring:", data)
+                print(f"[WS] Unknown command: {data!r}")
+
 
     except WebSocketDisconnect:
         print("Client disconnected")
-
+    
     finally:
-        # clean up everything
+        # clean up
         video_streamer.stop_streaming()
-        try:
-            GPIO.cleanup()
-        except AttributeError:
-            pass
+        GPIO.cleanup()
         print("Process Ended")
-
 
 # ─── WebSocket connection handler ────────────────────────────────
 if __name__ == "__main__":
