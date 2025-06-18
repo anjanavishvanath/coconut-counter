@@ -16,6 +16,7 @@ export default function App() {
   const [buckets, setBuckets] = useState(bktsA);
   const [filledBucketsCount, setFilledBucketsCount] = useState(0);
   const filledBucketsCountRef = useRef(filledBucketsCount);
+  const bucketFullSendRef = useRef(false);
 
   // Keyboard related states
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -39,7 +40,8 @@ export default function App() {
     const baseline = totalCoconutCount - prevCount;
     setFilledBucketsCount(baseline);
     filledBucketsCountRef.current = baseline;
-  }, [selectedBucket, totalCoconutCount, buckets]);
+    bucketFullSendRef.current = false;
+  }, [selectedBucket]);
 
 
   //Establish web socket at page load
@@ -86,9 +88,10 @@ export default function App() {
                 const newCount = Math.max(0, count - filledCount);
 
                 // stop the conveyor when the bucket is full
-                if (newCount >= bucket.set_value) {
-                  console.log(`Bucket ${bucket.id} is full, stopping conveyor.`);
+                if (newCount >= bucket.set_value && !bucketFullSendRef.current) {
+                  // console.log(`Bucket ${bucket.id} is full, stopping conveyor.`);
                   ws.current.send("bucket_full");
+                  bucketFullSendRef.current = true;
                 }
 
                 return { ...bucket, count: newCount };
@@ -110,6 +113,7 @@ export default function App() {
     };
   }, []);
 
+  console.log("bucketRefillSent: ", bucketFullSendRef.current)
 
   //-------Button Functions ------------------------------------//
   const handleStartStop = () => {
