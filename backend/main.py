@@ -41,7 +41,7 @@ from sort import Sort  # your local sort.py
 # BCM pin numbers
 START_BUTTON_PIN = 16
 STOP_BUTTON_PIN  = 12
-CONVEYOR_RELAY_PIN = 23
+CONVEYOR_RELAY_PIN = 25
 BUZZEER_PIN = 24
 
 # Open the GPIO chip (always 0 on Pi)
@@ -62,14 +62,16 @@ def start_button_pressed(channel):
     """Callback: button pressed → turn conveyor on."""
     print("Button pressed, starting conveyor…")
     if GPIO.input(START_BUTTON_PIN) == 0:
-        lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
-        lgpio.gpio_write(chip, BUZZEER_PIN, 0)  # turn off buzzer
+        if GPIO.input(START_BUTTON_PIN) == 0:
+            lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 1)
+            lgpio.gpio_write(chip, BUZZEER_PIN, 0)  # turn off buzzer
 
 def stop_button_pressed(channel):
     """Callback: button pressed → turn conveyor off."""
     print("Button pressed, stopping conveyor…")
     if GPIO.input(STOP_BUTTON_PIN) == 0:
-        lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+        if GPIO.input(STOP_BUTTON_PIN) == 0:
+            lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
 
 # ─── Install a falling-edge interrupt with 200 ms debounce ─────────────────
 GPIO.add_event_detect(
