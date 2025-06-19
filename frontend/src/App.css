@@ -151,3 +151,8 @@ button{
 .keyboard-functions > button{
   width: 50%;
 }
+
+.keyboard .hg-button{
+  font-size: 2 rem;
+  height: 50px; 
+}

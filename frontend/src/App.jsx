@@ -12,7 +12,7 @@ export default function App() {
   const [imgSrc, setImgSrc] = useState("");
 
   // Bucket related states
-  const bktsA = Array.from({ length: 14 }, (_, i) => ({ id: i + 1, count: 0, set_value: 20 }));
+  const bktsA = Array.from({ length: 14 }, (_, i) => ({ id: i + 1, count: 0, set_value: 800 }));
   const [buckets, setBuckets] = useState(bktsA);
   const [filledBucketsCount, setFilledBucketsCount] = useState(0);
   const filledBucketsCountRef = useRef(filledBucketsCount);

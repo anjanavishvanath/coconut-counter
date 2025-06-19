@@ -68,7 +68,8 @@ def start_button_pressed(channel):
 def stop_button_pressed(channel):
     """Callback: button pressed → turn conveyor off."""
     print("Button pressed, stopping conveyor…")
-    lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
+    if GPIO.input(STOP_BUTTON_PIN) == 0:
+        lgpio.gpio_write(chip, CONVEYOR_RELAY_PIN, 0)
 
 # ─── Install a falling-edge interrupt with 200 ms debounce ─────────────────
 GPIO.add_event_detect(
@@ -95,16 +96,16 @@ class VideoStreamer:
         self.encode_param  = [int(cv2.IMWRITE_JPEG_QUALITY), 50]
 
         # init SORT
-        self.tracker = Sort(max_age=5, min_hits=1, iou_threshold=0.25)
+        self.tracker = Sort(max_age=5, min_hits=2, iou_threshold=0.3)
         self.counted_ids = set()
     
     def reset(self):
         self.current_count = 0
         self.counted_ids.clear()
-        self.tracker = Sort(max_age=5, min_hits=1, iou_threshold=0.25)
+        self.tracker = Sort(max_age=5, min_hits=2, iou_threshold=0.3)
 
     async def video_stream(self, websocket: WebSocket):
-        self.cap = cv2.VideoCapture("../videos/250_coconuts.mp4") #"../videos/250_coconuts.mp4"
+        self.cap = cv2.VideoCapture(0) #"../videos/250_coconuts.mp4"
         self.processing = True
 
 
@@ -162,7 +163,7 @@ class VideoStreamer:
 
                         c = max(cnts, key=cv2.contourArea)
 
-                        if cv2.contourArea(c) < 1000:
+                        if cv2.contourArea(c) < 1100:
                             continue
 
                         #(optional) draw contours and labels

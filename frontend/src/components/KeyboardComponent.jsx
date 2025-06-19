@@ -17,6 +17,7 @@ export default function KeyboardComponent({handleClose,
                 onChange={handleInput}
                 inputName='num'
                 input={value}
+                className="keyboard"
                 />
 
             <div className='keyboard-functions'>
