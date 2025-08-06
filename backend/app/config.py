@@ -1,0 +1,21 @@
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env file
+load_dotenv()
+
+# ─── GPIO setup ─────────────────────────────────────────────────────
+# BCM pin numbers
+START_BUTTON_PIN = 16
+STOP_BUTTON_PIN  = 12
+CONVEYOR_RELAY_PIN = 25
+BUZZEER_PIN = 24
+
+# ─── SMTP configuration ─────────────────────────────────────────────
+# Data is pulled from a .env file in the same directory as this script.
+SMTP_HOST = os.getenv("SMTP_HOST")
+SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+SMTP_USER = os.getenv("SMTP_USER")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+EMAIL_FROM    = os.getenv("EMAIL_FROM")
+EMAIL_TO      = os.getenv("EMAIL_TO")
