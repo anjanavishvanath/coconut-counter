@@ -43,16 +43,22 @@ class VideoStreamer:
         annotated = frame.copy() #copy to be drawn on
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
+        # Mask for brown and light colors 
         lower_brown = np.array([8, 50, 40])
         upper_brown = np.array([30, 255, 255])
+        outer_mask = cv2.inRange(hsv, lower_brown, upper_brown)
 
         lower_light = np.array([0, 0, 160])
         upper_light = np.array([40, 60, 255])
-
-        outer_mask = cv2.inRange(hsv, lower_brown, upper_brown)
         inner_mask = cv2.inRange(hsv, lower_light, upper_light)
 
+        #mask for dark/wet coconuts
+        # lower_dark = np.array([5, 40, 10])    # H in coconut range, S moderate, V low
+        # upper_dark = np.array([30, 255, 90])  # V up to 90 (tweak to include wet ones)
+        # mask_dark = cv2.inRange(hsv, lower_dark, upper_dark)
+
         final_mask = cv2.bitwise_or(outer_mask, inner_mask)
+        # final_mask = cv2.bitwise_or(final_mask, mask_dark)
         eroded_mask = cv2.erode(final_mask, None, iterations=3)
 
         D = ndimage.distance_transform_edt(eroded_mask)
