@@ -146,7 +146,7 @@ class VideoStreamer:
         
         for attempt in range(1, retries + 1):
             self.cap = cv2.VideoCapture(self.source)
-            if not self.cap or self.cap.isOpened():
+            if not self.cap or not self.cap.isOpened():
                 #wait and try again
                 time.sleep(delay)
                 continue

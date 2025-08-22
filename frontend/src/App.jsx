@@ -5,30 +5,30 @@ import "./App.css";
 
 const STORAGE_KEY = "coconut_State_v1";
 
-function loadLocalState(){
-  try{
+function loadLocalState() {
+  try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if(!raw) return null;
+    if (!raw) return null;
     return JSON.parse(raw);
-  }catch (e){
+  } catch (e) {
     console.error("Failed to load local state:", e);
     return null;
   }
 }
 
-function saveLocalState(buckets, total){
-  try{
-    const payload = { buckets,total, ts: Date.now()};
+function saveLocalState(buckets, total) {
+  try {
+    const payload = { buckets, total, ts: Date.now() };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }catch (e){
+  } catch (e) {
     console.error("Failed to save local state:", e);
   }
 }
 
-function cleanLocalState(){
-  try{
+function cleanLocalState() {
+  try {
     localStorage.removeItem(STORAGE_KEY);
-  }catch (e) {
+  } catch (e) {
     console.error("Failed to clean local state:", e);
   }
 }
@@ -105,7 +105,22 @@ export default function App() {
 
     ws.current.onmessage = (event) => {
       if (typeof event.data === "string") {
-        console.log("Control message:", event.data);
+        // console.log("Control message:", event.data);
+        // try parse JSON control messages first
+        let parsed = null;
+        try {
+          parsed = JSON.parse(event.data);
+        } catch (e) {
+          parsed = null;
+        }
+
+        if (parsed && parsed.type === "error") {
+          console.error("Server error:", parsed);
+          alert(`Error from server: ${parsed.message || parsed.code}`);
+          // optionally stop streaming state if we had flipped it
+          setIsStreaming(false);
+          return;
+        }
         if (event.data === "reset") {
           // clear any lingering UI
           setTotalCoconutCount(0);
@@ -192,12 +207,12 @@ export default function App() {
       try {
         const initMsg = JSON.stringify({ type: "set_offset", offset: totalCoconutCount });
         ws.current.send(initMsg);
-      }catch (e){
+      } catch (e) {
         console.warn("Could not send offset to server:", e);
       }
       ws.current.send("start");
       setIsStreaming(true);
-    }else {
+    } else {
       ws.current.send("stop");
       setIsStreaming(false);
     }

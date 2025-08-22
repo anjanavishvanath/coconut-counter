@@ -14,7 +14,7 @@ async def ws_endpoint(websocket: WebSocket):
     # Per-connection offset (starts 0 until client sends set_offset)
     offset = 0
 
-    streamer = VideoStreamer(source="../videos/250_coconuts.mp4")
+    streamer = VideoStreamer(source=0) #"../videos/250_coconuts.mp4"
     gpio_controller = GPIOController()
     send_task = None
 
@@ -63,6 +63,13 @@ async def ws_endpoint(websocket: WebSocket):
 
             # plain string commands:
             if cmd == "start":
+                # Try to open the camera before starting
+                ok = streamer.open(retries=3, delay=0.25)
+                if not ok:
+                    # send a clear JSON error to the client and do NOT start the conveyor/pump
+                    await websocket.send_text(json.dumps({"type": "error", "code": "camera_not_found", "message": "Could not open camera"}))
+                    continue
+                # camera OK -> spawn pump and start conveyor
                 if send_task is None or send_task.done():
                     send_task = asyncio.create_task(pump_frames())
                 gpio_controller.start_conveyor()
@@ -88,6 +95,7 @@ async def ws_endpoint(websocket: WebSocket):
                 offset = 0
                 streamer.release()
                 streamer.reset()
+                streamer.close()
                 await websocket.send_text("reset")
 
             else:
