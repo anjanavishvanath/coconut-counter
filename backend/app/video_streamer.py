@@ -5,6 +5,7 @@ from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
 from scipy import ndimage
 from sort.sort import Sort  # your local sort.py
+import time
 
 class VideoStreamer:
     def __init__(self, source=0, trigger_line_y=120, quality=50):
@@ -127,3 +128,50 @@ class VideoStreamer:
             self.cap.release()
             self.cap = None
         print("Released video capture resource.")
+
+    def open(self, retries: int = 3, delay: float = 0.2):
+        """
+        Try to open the video source and verify at least one frame can be read.
+        Returns True if OK, False otherwise.
+        retries: number of attempts
+        delay: seconds between attempts (useful for USB/camera warm-up)
+        """
+        #ensure previous capture is closed
+        if self.cap:
+            try:
+                self.cap.release()
+            except Exception:
+                pass
+            self.cap = None
+        
+        for attempt in range(1, retries + 1):
+            self.cap = cv2.VideoCapture(self.source)
+            if not self.cap or self.cap.isOpened():
+                #wait and try again
+                time.sleep(delay)
+                continue
+            # try to read a single frame to confirm camera readiness
+            ret, _ = self.cap.read()
+            if ret:
+                # success — keep cap open for subsequent reads
+                return True
+            # couldn't read, release and retry
+            try:
+                self.cap.release()
+            except Exception:
+                pass
+            self.cap = None
+            time.sleep(delay)
+        
+        # after retries, camera not available
+        return False
+    
+    def is_open(self) -> bool:
+        return bool(self.cap and self.cap.isOpened())
+    
+    def close(self):
+        if self.cap:
+            try:
+                self.cap.release()
+            finally:
+                self.cap = None

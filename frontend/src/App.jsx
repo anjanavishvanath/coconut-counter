@@ -3,6 +3,36 @@ import Bucket from "./components/Bucket";
 import KeyboardComponent from "./components/KeyboardComponent";
 import "./App.css";
 
+const STORAGE_KEY = "coconut_State_v1";
+
+function loadLocalState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return null;
+    return JSON.parse(raw);
+  }catch (e){
+    console.error("Failed to load local state:", e);
+    return null;
+  }
+}
+
+function saveLocalState(buckets, total){
+  try{
+    const payload = { buckets,total, ts: Date.now()};
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  }catch (e){
+    console.error("Failed to save local state:", e);
+  }
+}
+
+function cleanLocalState(){
+  try{
+    localStorage.removeItem(STORAGE_KEY);
+  }catch (e) {
+    console.error("Failed to clean local state:", e);
+  }
+}
+
 export default function App() {
   // General States and Refs
   const ws = useRef(null);
@@ -42,6 +72,26 @@ export default function App() {
     filledBucketsCountRef.current = baseline;
     bucketFullSendRef.current = false;
   }, [selectedBucket]);
+
+  //----------on mount: restore local state (if any)----------//
+  useEffect(() => {
+    const saved = loadLocalState();
+    if (saved) {
+      setBuckets(saved.buckets);
+      setTotalCoconutCount(saved.total);
+
+      // restoring selected bucket and filled bucket baseline
+      const prevCount = saved.buckets.find(b => b.id === selectedBucket)?.count ?? 0;
+      const baseline = saved.total - prevCount;
+      setFilledBucketsCount(baseline);
+      filledBucketsCountRef.current = baseline;
+    }
+  }, []);
+
+  // persist whenever the buckets or total change
+  useEffect(() => {
+    saveLocalState(buckets, totalCoconutCount);
+  }, [buckets, totalCoconutCount]);
 
 
   //Establish web socket at page load
@@ -129,10 +179,25 @@ export default function App() {
       return;
     }
 
+    // if (!isStreaming) {
+    //   ws.current.send("start");
+    //   setIsStreaming(true);
+    // } else {
+    //   ws.current.send("stop");
+    //   setIsStreaming(false);
+    // }
+
+    // send the initial offset as JSON, then the "start" command
     if (!isStreaming) {
+      try {
+        const initMsg = JSON.stringify({ type: "set_offset", offset: totalCoconutCount });
+        ws.current.send(initMsg);
+      }catch (e){
+        console.warn("Could not send offset to server:", e);
+      }
       ws.current.send("start");
       setIsStreaming(true);
-    } else {
+    }else {
       ws.current.send("stop");
       setIsStreaming(false);
     }
@@ -148,6 +213,8 @@ export default function App() {
       alert("WebSocket is not open. Cannot save report.");
       return;
     }
+
+    cleanLocalState();
 
     try {
       const response = await fetch("http://localhost:8000/save_report", {
@@ -176,6 +243,7 @@ export default function App() {
 
   const handleReset = () => {
     if (!confirm("Reset all data?")) return;
+    cleanLocalState();
     ws.current.send("reset");
 
     setIsStreaming(false);
