@@ -54,12 +54,12 @@ class VideoStreamer:
         inner_mask = cv2.inRange(hsv, lower_light, upper_light)
 
         #mask for dark/wet coconuts
-        # lower_dark = np.array([5, 40, 10])    # H in coconut range, S moderate, V low
-        # upper_dark = np.array([30, 255, 90])  # V up to 90 (tweak to include wet ones)
-        # mask_dark = cv2.inRange(hsv, lower_dark, upper_dark)
+        lower_dark = np.array([5, 20, 60])    # H in coconut range, S moderate, V low
+        upper_dark = np.array([30, 80, 255])  # V up to 90 (tweak to include wet ones)
+        mask_dark = cv2.inRange(hsv, lower_dark, upper_dark)
 
         final_mask = cv2.bitwise_or(outer_mask, inner_mask)
-        # final_mask = cv2.bitwise_or(final_mask, mask_dark)
+        final_mask = cv2.bitwise_or(final_mask, mask_dark)
         eroded_mask = cv2.erode(final_mask, None, iterations=3)
 
         D = ndimage.distance_transform_edt(eroded_mask)
