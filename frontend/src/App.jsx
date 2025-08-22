@@ -54,6 +54,34 @@ export default function App() {
   const selectedBucketRef = useRef(selectedBucket);
   const [keyboardValue, setKeyboardValue] = useState(0);
 
+  //time related states
+  const [now, setNow] = useState(() => new Date());
+
+  const timeZone = "Asia/Colombo";
+
+  // formatted pieces
+  const dateStr = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(now);
+
+  const timeStr = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(now);
+
+  // update every second
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
   // Keep refs in sync
   useEffect(() => { filledBucketsCountRef.current = filledBucketsCount; }, [filledBucketsCount]);
   useEffect(() => { selectedBucketRef.current = selectedBucket; }, [selectedBucket]);
@@ -194,14 +222,6 @@ export default function App() {
       return;
     }
 
-    // if (!isStreaming) {
-    //   ws.current.send("start");
-    //   setIsStreaming(true);
-    // } else {
-    //   ws.current.send("stop");
-    //   setIsStreaming(false);
-    // }
-
     // send the initial offset as JSON, then the "start" command
     if (!isStreaming) {
       try {
@@ -333,7 +353,13 @@ export default function App() {
           )}
           <h2>Total Coconuts: {totalCoconutCount}</h2>
           <h2>Active Bucket: {selectedBucket}</h2>
-          {imgSrc && <img className="video_frame" src={imgSrc} alt="Stream" />}
+          <div className="vidandtime">
+            {imgSrc && <img className="video_frame" src={imgSrc} alt="Stream" />}
+            <div className="clock">
+              <div className="clock-date">{dateStr}</div>
+              <div className="clock-time">{timeStr}</div>
+            </div>
+          </div>
         </div>
         <div className="buckets_container">
           {buckets.map((bucket) => (

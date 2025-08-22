@@ -156,3 +156,12 @@ button{
   font-size: 2 rem;
   height: 50px; 
 }
+
+.vidandtime{
+  display: flex;
+  justify-content: space-around;
+}
+
+.clock{
+  font-size: 1.5rem;
+}
