@@ -59,7 +59,7 @@ button{
   background: #218838;
 }
 
-.resetBtn{
+.resetBtn , .shutdownBtn{
   background: #FF6347;
 }
 

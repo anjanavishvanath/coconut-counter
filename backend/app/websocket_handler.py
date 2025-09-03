@@ -4,6 +4,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 import struct
 import json
 import traceback
+import subprocess
 
 from app.video_streamer import VideoStreamer
 from app.gpio_controller import GPIOController  # GPIO controller class
@@ -14,9 +15,41 @@ async def ws_endpoint(websocket: WebSocket):
     # Per-connection offset (starts 0 until client sends set_offset)
     offset = 0
 
-    streamer = VideoStreamer(source=0) #"../videos/250_coconuts.mp4"
+    streamer = VideoStreamer(source="../videos/vid3.mp4") #"../videos/250_coconuts.mp4"
     gpio_controller = GPIOController()
     send_task = None
+
+    #helper to perform the actual shutdown sequence (background)
+    async def do_shutdown_sequence():
+        # notify connected client (best effort)
+        try:
+            await websocket.send_text(json.dumps({"type":"info","message":"shutdown_in_progress"}))
+        except Exception:
+            pass
+
+        # stop conveyor and other hardware
+        try:
+            gpio_controller.stop_conveyor()   
+            await asyncio.sleep(0.3)  # wait a moment
+            gpio_controller.cleanup()
+        except Exception:
+            print("Error cleaning GPIO:", e)
+
+        # releas camera resources
+        try:
+            streamer.release()
+            streamer.close()
+        except Exception:
+            pass
+
+        # give the UI a moment to receive the message, then call system shutdown
+        await asyncio.sleep(0.5)
+
+        #use sudo to run poweroff
+        try:
+            subprocess.run(["sudo", "systemctl", "poweroff"], check=False)
+        except Exception as e:
+            print("Error during system shutdown:", e)
 
     # pump_frames is an inner coroutine that captures `offset` by closure
     async def pump_frames():
@@ -29,7 +62,7 @@ async def ws_endpoint(websocket: WebSocket):
                 total_to_send = (offset or 0) + (count or 0)
                 header = struct.pack('!I', total_to_send)
                 await websocket.send_bytes(header + jpeg_bytes)
-                await asyncio.sleep(1/60)
+                await asyncio.sleep(1/20)
         except asyncio.CancelledError:
             print("Frame pumping task cancelled")
         except Exception as e:
@@ -97,6 +130,13 @@ async def ws_endpoint(websocket: WebSocket):
                 streamer.reset()
                 streamer.close()
                 await websocket.send_text("reset")
+
+            elif cmd == "shutdown":
+                # launch the shutdown sequence as a background task so current handler can finish
+                asyncio.create_task(do_shutdown_sequence())
+                # respond immediately
+                await websocket.send_text(json.dumps({"type":"info","message":"shutdown_queued"}))
+                continue
 
             else:
                 print("Unknown command, ignoring:", cmd)

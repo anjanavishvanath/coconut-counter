@@ -297,6 +297,17 @@ export default function App() {
     selectedBucketRef.current = null;
   }
 
+  const handleShutdown = () => {
+    if (!confirm("Shutdown Raspberry Pi now? Make sure you saved everything.")) return;
+
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send("shutdown");
+      // optionally show a UI message - will get an ack from server
+      alert("Shutdown requested. The device will power off shortly.");
+      return;
+    }
+  }
+
   //-------Keyboard Functions ------------------------------------//
   const handleKeyboardInput = (input) => {
     const v = parseInt(input) || 0;
@@ -358,6 +369,7 @@ export default function App() {
             <div className="clock">
               <div className="clock-date">{dateStr}</div>
               <div className="clock-time">{timeStr}</div>
+              <button className="shutdownBtn" onClick={handleShutdown}>Shutdown</button>
             </div>
           </div>
         </div>
