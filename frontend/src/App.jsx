@@ -57,6 +57,9 @@ export default function App() {
   //time related states
   const [now, setNow] = useState(() => new Date());
 
+  // state for exporting
+  const [isExporting, setIsExporting] = useState(false);
+
   const timeZone = "Asia/Colombo";
 
   // formatted pieces
@@ -297,6 +300,27 @@ export default function App() {
     selectedBucketRef.current = null;
   }
 
+  const handleExportToUSB = async () => {
+  if (!confirm("Copy reports.csv to USB drive now?")) return;
+
+    setIsExporting(true);
+    try {
+      const resp = await fetch("http://localhost:8000/export_report", { method: "POST" });
+      const data = await resp.json();
+      if (!resp.ok) {
+        console.error("Export failed:", data);
+        alert(`Export failed: ${data.detail || "unknown error"}`);
+      } else {
+        alert(`Report copied to USB:\n${data.dest}`);
+      }
+    } catch (e) {
+      console.error("Export error:", e);
+      alert(`Export error: ${e.message}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const handleShutdown = () => {
     if (!confirm("Shutdown Raspberry Pi now? Make sure you saved everything.")) return;
 
@@ -369,6 +393,14 @@ export default function App() {
             <div className="clock">
               <div className="clock-date">{dateStr}</div>
               <div className="clock-time">{timeStr}</div>
+              <button
+                className="exportBtn"
+                onClick={handleExportToUSB}
+                disabled={isExporting}
+                title="Copy reports.csv to first detected USB drive"
+              >
+                {isExporting ? "Copying…" : "Copy CSV to USB"}
+              </button>
               <button className="shutdownBtn" onClick={handleShutdown}>Shutdown</button>
             </div>
           </div>

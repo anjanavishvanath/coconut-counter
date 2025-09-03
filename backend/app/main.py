@@ -9,10 +9,14 @@ from app.email_utils import send_report_email  # Function to send email with rep
 from app.report_writer import write_report  # Function to write report to CSV
 from app.email_utils import send_report_email # Function to send email with report
 from app.models import ReportPayload  # Pydantic model for report payload
+from app.export_utils import router as export_router
+
 
 
 # ─── fastapi setup ─────────────────────────────────────────────────
 app = FastAPI()
+
+app.include_router(export_router)
 
 app.add_middleware(
     CORSMiddleware,

@@ -43,11 +43,11 @@ button{
   background: #166dfe;
 }
 
-.setBtn{
+.setBtn, .exportBtn{
   background: #c5aa12;
 }
 
-.setBtn:hover{
+.setBtn:hover, .exportBtn:hover{
   background: #bda312;
 }
 
@@ -63,7 +63,7 @@ button{
   background: #FF6347;
 }
 
-.resetBtn:hover{
+.resetBtn:hover, .shutdownBtn:hover{
   background: #ff4c3b;
 }
 
@@ -164,4 +164,10 @@ button{
 
 .clock{
   font-size: 1.5rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.clock > * {
+  margin: 10px 5px;
 }
