@@ -15,7 +15,7 @@ async def ws_endpoint(websocket: WebSocket):
     # Per-connection offset (starts 0 until client sends set_offset)
     offset = 0
 
-    streamer = VideoStreamer(source="../videos/vid3.mp4") #"../videos/250_coconuts.mp4"
+    streamer = VideoStreamer(source=0) #"../videos/250_coconuts.mp4"
     gpio_controller = GPIOController()
     send_task = None
 
