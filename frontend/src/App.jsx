@@ -1,9 +1,11 @@
+// src/App.jsx
 import { useState, useEffect, useRef } from "react";
 import Bucket from "./components/Bucket";
 import KeyboardComponent from "./components/KeyboardComponent";
 import "./App.css";
 
-const STORAGE_KEY = "coconut_State_v1";
+const STORAGE_KEY = "coconut_State_v1"; // still used for saving frontend metadata (optional)
+const SELECTED_BUCKET_KEY = "coconut_selected_bucket_v1";
 
 function loadLocalState() {
   try {
@@ -16,20 +18,33 @@ function loadLocalState() {
   }
 }
 
-function saveLocalState(buckets, total) {
+function saveLocalState(payload) {
   try {
-    const payload = { buckets, total, ts: Date.now() };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch (e) {
     console.error("Failed to save local state:", e);
   }
 }
 
-function cleanLocalState() {
+function loadSelectedBucket() {
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    const raw = localStorage.getItem(SELECTED_BUCKET_KEY);
+    if (!raw) return null;
+    return parseInt(raw, 10);
   } catch (e) {
-    console.error("Failed to clean local state:", e);
+    return null;
+  }
+}
+
+function saveSelectedBucket(b) {
+  try {
+    if (b === null || b === undefined) {
+      localStorage.removeItem(SELECTED_BUCKET_KEY);
+    } else {
+      localStorage.setItem(SELECTED_BUCKET_KEY, String(b));
+    }
+  } catch (e) {
+    console.warn("Failed to persist selected bucket:", e);
   }
 }
 
@@ -41,26 +56,21 @@ export default function App() {
   const [totalCoconutCount, setTotalCoconutCount] = useState(0);
   const [imgSrc, setImgSrc] = useState("");
 
-  // Bucket related states
-  const bktsA = Array.from({ length: 14 }, (_, i) => ({ id: i + 1, count: 0, set_value: 800 }));
-  const [buckets, setBuckets] = useState(bktsA);
-  const [filledBucketsCount, setFilledBucketsCount] = useState(0);
-  const filledBucketsCountRef = useRef(filledBucketsCount);
-  const bucketFullSendRef = useRef(false);
+  // Bucket related states (will be populated from server)
+  const defaultBuckets = Array.from({ length: 14 }, (_, i) => ({ id: i + 1, count: 0, set_value: 800, filled: false }));
+  const [buckets, setBuckets] = useState(defaultBuckets);
 
   // Keyboard related states
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-  const [selectedBucket, setSelectedBucket] = useState(1);
+  const [selectedBucket, setSelectedBucket] = useState(() => loadSelectedBucket());
   const selectedBucketRef = useRef(selectedBucket);
   const [keyboardValue, setKeyboardValue] = useState(0);
 
-  //time related states
-  const [now, setNow] = useState(() => new Date());
-
-  // state for exporting
+  // export state
   const [isExporting, setIsExporting] = useState(false);
 
   const timeZone = "Asia/Colombo";
+  const [now, setNow] = useState(() => new Date());
 
   // formatted pieces
   const dateStr = new Intl.DateTimeFormat("en-GB", {
@@ -79,65 +89,45 @@ export default function App() {
     hour12: false,
   }).format(now);
 
-  // update every second
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
 
   // Keep refs in sync
-  useEffect(() => { filledBucketsCountRef.current = filledBucketsCount; }, [filledBucketsCount]);
-  useEffect(() => { selectedBucketRef.current = selectedBucket; }, [selectedBucket]);
-  useEffect(() => { isStreamingRef.current = isStreaming }, [isStreaming]);
+  useEffect(() => { selectedBucketRef.current = selectedBucket; saveSelectedBucket(selectedBucket); }, [selectedBucket]);
+  useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
+
+  // revoke old image URL when imgSrc changes or on unmount
   useEffect(() => {
     return () => {
-      if (imgSrc) URL.revokeObjectURL(imgSrc);
+      if (imgSrc) {
+        try { URL.revokeObjectURL(imgSrc); } catch (e) {}
+      }
     };
-  }, [imgSrc]); //revoke old object URLs to free memory
+  }, [imgSrc]);
 
-  //----------Resetting Coconut count for new bucket selection----------//
-  useEffect(() => {
-    const prevCount = buckets.find(b => b.id === selectedBucket)?.count ?? 0;
-    const baseline = totalCoconutCount - prevCount;
-    setFilledBucketsCount(baseline);
-    filledBucketsCountRef.current = baseline;
-    bucketFullSendRef.current = false;
-  }, [selectedBucket]);
-
-  //----------on mount: restore local state (if any)----------//
-  useEffect(() => {
-    const saved = loadLocalState();
-    if (saved) {
-      setBuckets(saved.buckets);
-      setTotalCoconutCount(saved.total);
-
-      // restoring selected bucket and filled bucket baseline
-      const prevCount = saved.buckets.find(b => b.id === selectedBucket)?.count ?? 0;
-      const baseline = saved.total - prevCount;
-      setFilledBucketsCount(baseline);
-      filledBucketsCountRef.current = baseline;
-    }
-  }, []);
-
-  // persist whenever the buckets or total change
-  useEffect(() => {
-    saveLocalState(buckets, totalCoconutCount);
-  }, [buckets, totalCoconutCount]);
-
-
-  //Establish web socket at page load
+  // WebSocket setup on mount
   useEffect(() => {
     ws.current = new WebSocket("ws://localhost:8000/ws");
     ws.current.binaryType = "blob";
 
-    ws.current.onopen = () => console.log("WS connected");
-    ws.current.onclose = () => console.log("WS closed", ws.current.readyState);
-    ws.current.onerror = (e) => console.error("WS error", e);
+    ws.current.onopen = () => {
+      console.log("WS connected");
+      // If we had a selected bucket stored locally, notify server
+      const stored = loadSelectedBucket();
+      if (stored && ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify({ type: "select_bucket", bucket: stored }));
+      }
+    };
+
+    ws.current.onclose = () => {
+      console.log("WS closed", ws.current ? ws.current.readyState : "no-ws");
+    };
+
+    ws.current.onerror = (e) => {
+      console.error("WS error", e);
+    };
 
     ws.current.onmessage = (event) => {
       if (typeof event.data === "string") {
-        // console.log("Control message:", event.data);
-        // try parse JSON control messages first
         let parsed = null;
         try {
           parsed = JSON.parse(event.data);
@@ -148,84 +138,89 @@ export default function App() {
         if (parsed && parsed.type === "error") {
           console.error("Server error:", parsed);
           alert(`Error from server: ${parsed.message || parsed.code}`);
-          // optionally stop streaming state if we had flipped it
           setIsStreaming(false);
           return;
         }
+
+        if (parsed && parsed.type === "buckets_update") {
+          // authoritative state from server
+          setBuckets(parsed.buckets);
+          return;
+        }
+
+        if (parsed && parsed.type === "selected_bucket") {
+          setSelectedBucket(parsed.bucket);
+          return;
+        }
+
+        if (parsed && parsed.type === "bucket_stopped") {
+          console.log("Server reports bucket stopped:", parsed.bucket);
+          setIsStreaming(false);
+          return;
+        }
+
+        // legacy textual responses
         if (event.data === "reset") {
-          // clear any lingering UI
           setTotalCoconutCount(0);
           setImgSrc("");
-          setSelectedBucket(1);
-          setFilledBucketsCount(0);
+          setSelectedBucket(null);
+          return;
         }
-      } else if (isStreamingRef.current) {
-        // Read the incoming Blob as an ArrayBuffer
-        const reader = new FileReader();
-        reader.onload = () => {
-          const buffer = reader.result;
-          const view = new DataView(buffer);
-          // first 4 bytes = big-endian unsigned count
-          const count = view.getUint32(0, false);
-          // the rest = JPEG data
-          const jpegBytes = buffer.slice(4);
-          const blob = new Blob([jpegBytes], { type: "image/jpeg" });
-          const url = URL.createObjectURL(blob);
 
-          setTotalCoconutCount(count);
-          setImgSrc(url);
-
-          const currentBucket = selectedBucketRef.current;
-          const filledCount = filledBucketsCountRef.current;
-
-          setBuckets((prevBuckets) => {
-            const updatedBuckets = prevBuckets.map((bucket) => {
-              if (bucket.id === currentBucket) {
-                const newCount = Math.max(0, count - filledCount);
-
-                // stop the conveyor when the bucket is full
-                if (newCount >= bucket.set_value && !bucketFullSendRef.current) {
-                  // console.log(`Bucket ${bucket.id} is full, stopping conveyor.`);
-                  ws.current.send("bucket_full");
-                  bucketFullSendRef.current = true;
-                }
-
-                return { ...bucket, count: newCount };
-              }
-              return bucket;
-            });
-            return updatedBuckets;
-          });
-        };
-        reader.readAsArrayBuffer(event.data);
+        // other plain text may be "started" / "stopped"
+        return;
       }
+
+      // binary frames: header + jpeg
+      const reader = new FileReader();
+      reader.onload = () => {
+        const buffer = reader.result;
+        const view = new DataView(buffer);
+        const count = view.getUint32(0, false);
+        const jpegBytes = buffer.slice(4);
+        const blob = new Blob([jpegBytes], { type: "image/jpeg" });
+        const url = URL.createObjectURL(blob);
+
+        setTotalCoconutCount(count);
+        setImgSrc((prev) => {
+          try { if (prev) URL.revokeObjectURL(prev); } catch (e) {}
+          return url;
+        });
+
+        // Do not modify buckets here — server is authoritative and will push buckets_update messages
+      };
+      reader.readAsArrayBuffer(event.data);
     };
 
-
-    //end of useEffect
     return () => {
       console.log("Unmounting: closing WS");
-      ws.current.close();
+      try {
+        if (ws.current && (ws.current.readyState === WebSocket.OPEN || ws.current.readyState === WebSocket.CONNECTING)) {
+          ws.current.close();
+        }
+      } catch (e) {
+        console.warn("Error closing websocket on unmount:", e);
+      }
     };
   }, []);
 
-  console.log("bucketRefillSent: ", bucketFullSendRef.current)
+  // Persist frontend metadata if you want
+  useEffect(() => {
+    saveLocalState({ ts: Date.now(), selectedBucket });
+  }, [selectedBucket]);
 
-  //-------Button Functions ------------------------------------//
+  // ------- Button functions -------
   const handleStartStop = () => {
-    // console.log("WS readyState:", ws.current?.readyState); // 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
-
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
       alert("Waiting for server connection...");
       return;
     }
 
     if (selectedBucketRef.current === null) {
-      alert("Please select a bucket first.");
+      alert("Please select an active bucket before starting.");
       return;
     }
 
-    // send the initial offset as JSON, then the "start" command
     if (!isStreaming) {
       try {
         const initMsg = JSON.stringify({ type: "set_offset", offset: totalCoconutCount });
@@ -239,12 +234,13 @@ export default function App() {
       ws.current.send("stop");
       setIsStreaming(false);
     }
-  }
+  };
 
   const handleSetAll = () => {
     setIsKeyboardVisible(!isKeyboardVisible);
+    // set selected bucket to null to indicate "apply to all"
     setSelectedBucket(null);
-  }
+  };
 
   const handleFinish = async () => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
@@ -252,8 +248,7 @@ export default function App() {
       return;
     }
 
-    cleanLocalState();
-
+    // Use frontend buckets (authoritative because server sent them)
     try {
       const response = await fetch("http://localhost:8000/save_report", {
         method: "POST",
@@ -262,14 +257,12 @@ export default function App() {
       });
 
       if (!response.ok) {
-        // Server returned a non-2xx status
         const errorText = await response.text();
         console.error("Server error saving report:", errorText);
         alert(`❌ Failed to save report: ${response.status} ${response.statusText}`);
         return;
       }
 
-      // Parse the JSON if you want the saved path back
       const data = await response.json();
       console.log("Report saved:", data);
       alert(`✅ Report saved successfully to:\n${data.saved_to}`);
@@ -281,28 +274,18 @@ export default function App() {
 
   const handleReset = () => {
     if (!confirm("Reset all data?")) return;
-    cleanLocalState();
-    ws.current.send("reset");
-
+    try { if (ws.current && ws.current.readyState === WebSocket.OPEN) ws.current.send("reset"); } catch(e){}
     setIsStreaming(false);
     setTotalCoconutCount(0);
     setImgSrc("");
-
-    setBuckets(bktsA);
-
-    setFilledBucketsCount(0);
-
+    setBuckets(defaultBuckets);
     setIsKeyboardVisible(false);
     setSelectedBucket(null);
     setKeyboardValue(0);
-
-    filledBucketsCountRef.current = 0;
-    selectedBucketRef.current = null;
-  }
+  };
 
   const handleExportToUSB = async () => {
-  if (!confirm("Copy reports.csv to USB drive now?")) return;
-
+    if (!confirm("Copy reports.csv to USB drive now?")) return;
     setIsExporting(true);
     try {
       const resp = await fetch("http://localhost:8000/export_report", { method: "POST" });
@@ -323,45 +306,79 @@ export default function App() {
 
   const handleShutdown = () => {
     if (!confirm("Shutdown Raspberry Pi now? Make sure you saved everything.")) return;
-
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send("shutdown");
-      // optionally show a UI message - will get an ack from server
       alert("Shutdown requested. The device will power off shortly.");
       return;
     }
-  }
+  };
 
-  //-------Keyboard Functions ------------------------------------//
+  // ------- Keyboard functions (send commands to server) -------
   const handleKeyboardInput = (input) => {
     const v = parseInt(input) || 0;
     setKeyboardValue(v);
   };
 
   const handleKeyboardChange = () => {
-    setBuckets((prev) =>
-      prev.map((b) =>
-        selectedBucket === null || b.id === selectedBucket
-          ? { ...b, set_value: keyboardValue }
-          : b
-      )
-    );
+    // if selectedBucket === null -> set all
+    const payload = selectedBucket === null
+      ? { type: "set_all", set_value: keyboardValue }
+      : { type: "set_bucket_value", bucket: selectedBucket, set_value: keyboardValue };
+
+    try {
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify(payload));
+      }
+    } catch (e) {
+      console.warn("Could not send set value:", e);
+    }
+
     setKeyboardValue(0);
     setIsKeyboardVisible(false);
   };
 
   const handleKeyboardAdd = () => {
-    setBuckets((prev) =>
-      prev.map((b) =>
-        selectedBucket === null || b.id === selectedBucket
-          ? { ...b, set_value: b.set_value + keyboardValue }
-          : b
-      )
-    );
+    // compute new value client-side as convenience, but server is authoritative and will respond with buckets_update
+    let currentVal = 0;
+    if (selectedBucket !== null) {
+      const b = buckets.find((x) => x.id === selectedBucket);
+      currentVal = b ? b.set_value : 0;
+    }
+    const newVal = currentVal + keyboardValue;
+    const payload = selectedBucket === null
+      ? { type: "set_all", set_value: newVal }
+      : { type: "set_bucket_value", bucket: selectedBucket, set_value: newVal };
+
+    try {
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify(payload));
+      }
+    } catch (e) {
+      console.warn("Could not send add value:", e);
+    }
+
     setKeyboardValue(0);
     setIsKeyboardVisible(false);
   };
 
+  // Called when user clicks a bucket in UI
+  const onBucketClicked = (id) => {
+    // toggle keyboard for same bucket, else set selected and open keyboard
+    if (selectedBucket === id) {
+      setIsKeyboardVisible((prev) => !prev);
+    } else {
+      setSelectedBucket(id);
+      // notify server
+      try {
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+          ws.current.send(JSON.stringify({ type: "select_bucket", bucket: id }));
+        }
+      } catch (e) {
+        console.warn("send select_bucket failed", e);
+      }
+      setIsKeyboardVisible(true);
+    }
+  };
 
   //-------------------------------------------//
   return (
@@ -369,7 +386,7 @@ export default function App() {
       <header>
         <h1>Coconut Counter</h1>
         <nav>
-          <button className="startBtn" onClick={handleStartStop}>{isStreaming ? "Stop" : "Start"}</button>
+          <button className="startBtn" onClick={handleStartStop} disabled={selectedBucket === null}>{isStreaming ? "Stop" : "Start"}</button>
           <button className="setBtn" onClick={handleSetAll}>Set All</button>
           <button className="finishButton" onClick={handleFinish}>Finish</button>
           <button className="resetBtn" onClick={handleReset}>Reset</button>
@@ -387,7 +404,7 @@ export default function App() {
             />
           )}
           <h2>Total Coconuts: {totalCoconutCount}</h2>
-          <h2>Active Bucket: {selectedBucket}</h2>
+          <h2>Active Bucket: {selectedBucket ?? "—"}</h2>
           <div className="vidandtime">
             {imgSrc && <img className="video_frame" src={imgSrc} alt="Stream" />}
             <div className="clock">
@@ -412,20 +429,13 @@ export default function App() {
               id={bucket.id}
               count={bucket.count}
               set_value={bucket.set_value}
-              isFilled={bucket.count >= bucket.set_value}
+              isFilled={bucket.count >= bucket.set_value || !!bucket.filled}
               isSelected={bucket.id === selectedBucket}
-              handleClick={() => {
-                if (selectedBucket === bucket.id) {
-                  setIsKeyboardVisible(prev => !prev);
-                } else {
-                  setSelectedBucket(bucket.id);
-                  setIsKeyboardVisible(true);
-                }
-              }}
+              handleClick={() => onBucketClicked(bucket.id)}
             />
           ))}
         </div>
       </div>
     </>
-  )
+  );
 }
