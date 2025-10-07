@@ -52,7 +52,7 @@ async def ws_endpoint(websocket: WebSocket):
     # Per-connection variables
     offset = 0  # kept for legacy compatibility (frontend may send set_offset)
     selected_bucket = None  # bucket id (1..BUCKET_COUNT) or None
-    streamer = VideoStreamer(source="../videos/250_coconuts.mp4")
+    streamer = VideoStreamer(source=0) # "../videos/250_coconuts.mp4"
     gpio_controller = GPIOController()
     send_task = None
 
