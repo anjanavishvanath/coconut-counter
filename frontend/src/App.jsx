@@ -386,7 +386,7 @@ export default function App() {
       <header>
         <h1>Coconut Counter</h1>
         <nav>
-          <button className="startBtn" onClick={handleStartStop} disabled={selectedBucket === null}>{isStreaming ? "Stop" : "Start"}</button>
+          <button className="startBtn" onClick={handleStartStop} disabled={selectedBucket === null}>{isStreaming ? "Stop Counting" : "Start Counting"}</button>
           <button className="setBtn" onClick={handleSetAll}>Set All</button>
           <button className="finishButton" onClick={handleFinish}>Finish</button>
           <button className="resetBtn" onClick={handleReset}>Reset</button>

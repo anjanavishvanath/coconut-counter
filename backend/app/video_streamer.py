@@ -17,13 +17,13 @@ class VideoStreamer:
         self.encode_param  = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
 
         # init SORT
-        self.tracker = Sort(max_age=5, min_hits=2, iou_threshold=0.3)
+        self.tracker = Sort(max_age=5, min_hits=1, iou_threshold=0.2) # was 2 and 0.3 
         self.counted_ids = set()
     
     def reset(self):
         self.current_count = 0
         self.counted_ids.clear()
-        self.tracker = Sort(max_age=5, min_hits=2, iou_threshold=0.3)
+        self.tracker = Sort(max_age=5, min_hits=1, iou_threshold=0.2)
 
     def read_frame(self):
         "Grab one frame, process it, return count, jpeg_bytes"
@@ -63,7 +63,7 @@ class VideoStreamer:
         eroded_mask = cv2.erode(final_mask, None, iterations=3)
 
         D = ndimage.distance_transform_edt(eroded_mask)
-        localMax = peak_local_max(D, min_distance=20, labels=eroded_mask)
+        localMax = peak_local_max(D, min_distance=12, labels=eroded_mask) # was 20
 
         marker_mask = np.zeros(D.shape, dtype=bool)
         if localMax.shape[0] > 0:
@@ -88,7 +88,7 @@ class VideoStreamer:
 
             c = max(cnts, key=cv2.contourArea)
 
-            if cv2.contourArea(c) < 900:
+            if cv2.contourArea(c) < 700:
                 continue
 
             #(optional) draw contours and labels
