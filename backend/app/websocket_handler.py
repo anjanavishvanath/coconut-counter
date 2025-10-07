@@ -112,32 +112,41 @@ async def ws_endpoint(websocket: WebSocket):
                 delta = new_count - prev_count
                 prev_count = new_count
 
-                # if there are newly counted coconuts and a selected bucket is set, attribute them
+                # Attribution change: always attribute deltas to selected bucket (if any),
+                # even if that bucket was already marked "filled". We still mark "filled"
+                # the first time count >= set_value and stop the conveyor then, but we
+                # keep incrementing the bucket's count on subsequent frames so overfill
+                # is captured until operator selects another bucket.
                 if delta > 0 and selected_bucket is not None:
                     async with BUCKETS_LOCK:
                         idx = selected_bucket - 1
                         if 0 <= idx < len(BUCKETS):
                             b = BUCKETS[idx]
-                            if not b.get("filled", False):
-                                b["count"] = int(b.get("count", 0)) + int(delta)
-                                # If bucket now full -> stop conveyor and mark filled
-                                if b["count"] >= int(b.get("set_value", DEFAULT_SET_VALUE)):
-                                    b["filled"] = True
-                                    try:
-                                        gpio_controller.stop_conveyor()
-                                    except Exception as e:
-                                        print("Error stopping conveyor on bucket full:", e)
-                                    # tell client bucket stopped
-                                    try:
-                                        await websocket.send_text(json.dumps({"type": "bucket_stopped", "bucket": b["id"]}))
-                                    except Exception as e:
-                                        print("Error sending bucket_stopped:", e)
-                                # persist and push updated buckets
+                            # remember whether this bucket was filled before adding new items
+                            was_filled = bool(b.get("filled", False))
+                            # always add the delta to the current bucket (capture overfill)
+                            b["count"] = int(b.get("count", 0)) + int(delta)
+
+                            # If this is the first time we cross or reach the set_value, mark filled
+                            # and stop conveyor (but do NOT prevent further increments)
+                            if (not was_filled) and b["count"] >= int(b.get("set_value", DEFAULT_SET_VALUE)):
+                                b["filled"] = True
                                 try:
-                                    save_buckets_to_disk(BUCKETS)
-                                    await websocket.send_text(json.dumps({"type": "buckets_update", "buckets": BUCKETS}))
+                                    gpio_controller.stop_conveyor()
                                 except Exception as e:
-                                    print("Error sending buckets_update after attributing delta:", e)
+                                    print("Error stopping conveyor on bucket full:", e)
+                                # notify client that conveyor stopped for this bucket
+                                try:
+                                    await websocket.send_text(json.dumps({"type": "bucket_stopped", "bucket": b["id"]}))
+                                except Exception as e:
+                                    print("Error sending bucket_stopped:", e)
+
+                            # persist and push updated buckets (will show overfill counts to client)
+                            try:
+                                save_buckets_to_disk(BUCKETS)
+                                await websocket.send_text(json.dumps({"type": "buckets_update", "buckets": BUCKETS}))
+                            except Exception as e:
+                                print("Error sending buckets_update after attributing delta:", e)
 
                 # send binary frame: 4-byte BE unsigned total count + JPEG bytes
                 header = struct.pack("!I", new_count + (offset or 0))
