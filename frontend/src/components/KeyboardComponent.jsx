@@ -9,9 +9,7 @@ export default function KeyboardComponent({handleClose,
 }) {
     return (
         <div>
-            <button className='close' onClick={handleClose}>X</button>
             <div className='display'>{value}</div>
-
             <Keyboard 
                 layout={{default:['1 2 3', '4 5 6', '7 8 9', '0 {bksp}']}}
                 onChange={handleInput}
@@ -19,11 +17,12 @@ export default function KeyboardComponent({handleClose,
                 input={value}
                 className="keyboard"
                 />
-
             <div className='keyboard-functions'>
                 <button className='startBtn' onClick={handleChange}>Change</button>
                 <button className='setBtn' onClick={handleAdd}>Add</button>
             </div>    
+            <button className='close' onClick={handleClose}>Close</button>
+
         </div>
     )
 }
