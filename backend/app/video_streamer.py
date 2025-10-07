@@ -88,7 +88,7 @@ class VideoStreamer:
 
             c = max(cnts, key=cv2.contourArea)
 
-            if cv2.contourArea(c) < 1100:
+            if cv2.contourArea(c) < 900:
                 continue
 
             #(optional) draw contours and labels
