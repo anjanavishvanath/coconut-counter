@@ -6,10 +6,10 @@ load_dotenv()
 
 # ─── GPIO setup ─────────────────────────────────────────────────────
 # BCM pin numbers
-START_BUTTON_PIN = 16 #22
-STOP_BUTTON_PIN  = 12 #16
-CONVEYOR_RELAY_PIN = 25 #17 new Relay 4
-BUZZEER_PIN = 23 # Relay 3
+START_BUTTON_PIN = 22 #16
+STOP_BUTTON_PIN  = 16 #12 
+CONVEYOR_RELAY_PIN = 23 #was 25
+BUZZER_PIN = 24 # Relay 3
 
 # ─── SMTP configuration ─────────────────────────────────────────────
 # Data is pulled from a .env file in the same directory as this script.
