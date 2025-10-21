@@ -408,6 +408,13 @@ export default function App() {
                 {isExporting ? "Copying…" : "Copy CSV to USB"}
               </button>
               <button className="shutdownBtn" onClick={handleShutdown}>Shutdown</button>
+              <button onClick={() => {
+                if (window.confirm("Are you sure you want to close this window?")) {
+                  window.open('', '_self'); // required for some browsers
+                  window.close();
+                }
+              }}
+              className="resetBtn">Close App</button>
             </div>
           </div>
         </div>

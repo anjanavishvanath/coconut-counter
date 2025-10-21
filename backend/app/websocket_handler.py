@@ -246,10 +246,10 @@ async def ws_endpoint(websocket: WebSocket):
                     continue
                 if send_task is None or send_task.done():
                     send_task = asyncio.create_task(pump_frames())
-                # try:
-                #     gpio_controller.start_conveyor()
-                # except Exception as e:
-                #     print("Error starting conveyor:", e)
+                try:
+                    gpio_controller.stop_conveyor()
+                except Exception as e:
+                    print("Error starting conveyor:", e)
                 await websocket.send_text("started")
                 continue
 
