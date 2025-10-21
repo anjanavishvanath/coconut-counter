@@ -272,6 +272,7 @@ export default function App() {
     setIsKeyboardVisible(false);
     setSelectedBucket(null);
     setKeyboardValue(0);
+    try { if (ws.current && ws.current.readyState === WebSocket.OPEN) ws.current.send("start"); } catch(e){}
   };
 
   const handleExportToUSB = async () => {

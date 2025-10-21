@@ -265,8 +265,7 @@ async def ws_endpoint(websocket: WebSocket):
                 continue
 
             if cmd == "reset":
-                if send_task and not send_task.done():
-                    send_task.cancel()
+                selected_bucket = None
                 try:
                     gpio_controller.stop_conveyor()
                 except Exception as e:
@@ -278,12 +277,8 @@ async def ws_endpoint(websocket: WebSocket):
                     save_buckets_to_disk(BUCKETS)
                 offset = 0
                 try:
-                    streamer.release()
-                except Exception:
-                    pass
-                try:
                     streamer.reset()
-                    streamer.close()
+                    # streamer.close()
                 except Exception:
                     pass
                 await websocket.send_text("reset")

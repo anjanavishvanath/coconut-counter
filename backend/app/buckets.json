@@ -1,13 +1,13 @@
 [
   {
     "id": 1,
-    "count": 24,
+    "count": 15,
     "set_value": 20,
-    "filled": true
+    "filled": false
   },
   {
     "id": 2,
-    "count": 47,
+    "count": 0,
     "set_value": 800,
     "filled": false
   },
