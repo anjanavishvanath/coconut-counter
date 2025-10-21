@@ -104,26 +104,43 @@ export default function App() {
     };
   }, [imgSrc]);
 
-  // WebSocket setup on mount
+  // WebSocket setup on mount — sends "start" automatically on open
   useEffect(() => {
     ws.current = new WebSocket("ws://localhost:8000/ws");
     ws.current.binaryType = "blob";
 
     ws.current.onopen = () => {
       console.log("WS connected");
+
       // If we had a selected bucket stored locally, notify server
       const stored = loadSelectedBucket();
-      if (stored && ws.current && ws.current.readyState === WebSocket.OPEN) {
+      if (stored !== null && ws.current && ws.current.readyState === WebSocket.OPEN) {
         ws.current.send(JSON.stringify({ type: "select_bucket", bucket: stored }));
+      }
+
+      // Send initial offset and start command automatically when connection opens
+      try {
+        const initMsg = JSON.stringify({ type: "set_offset", offset: totalCoconutCount });
+        ws.current.send(initMsg);
+      } catch (e) {
+        console.warn("Could not send offset to server on open:", e);
+      }
+      try {
+        ws.current.send("start");
+        setIsStreaming(true);
+      } catch (e) {
+        console.warn("Could not send start command on open:", e);
       }
     };
 
     ws.current.onclose = () => {
       console.log("WS closed", ws.current ? ws.current.readyState : "no-ws");
+      setIsStreaming(false);
     };
 
     ws.current.onerror = (e) => {
       console.error("WS error", e);
+      setIsStreaming(false);
     };
 
     ws.current.onmessage = (event) => {
@@ -202,39 +219,12 @@ export default function App() {
         console.warn("Error closing websocket on unmount:", e);
       }
     };
-  }, []);
+  }, []); // <-- empty deps: run once at mount
 
   // Persist frontend metadata if you want
   useEffect(() => {
     saveLocalState({ ts: Date.now(), selectedBucket });
   }, [selectedBucket]);
-
-  // ------- Button functions -------
-  const handleStartStop = () => {
-    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
-      alert("Waiting for server connection...");
-      return;
-    }
-
-    if (selectedBucketRef.current === null) {
-      alert("Please select an active bucket before starting.");
-      return;
-    }
-
-    if (!isStreaming) {
-      try {
-        const initMsg = JSON.stringify({ type: "set_offset", offset: totalCoconutCount });
-        ws.current.send(initMsg);
-      } catch (e) {
-        console.warn("Could not send offset to server:", e);
-      }
-      ws.current.send("start");
-      setIsStreaming(true);
-    } else {
-      ws.current.send("stop");
-      setIsStreaming(false);
-    }
-  };
 
   const handleSetAll = () => {
     setIsKeyboardVisible(!isKeyboardVisible);
@@ -386,7 +376,6 @@ export default function App() {
       <header>
         <h1>Coconut Counter</h1>
         <nav>
-          <button className="startBtn" onClick={handleStartStop} disabled={selectedBucket === null}>{isStreaming ? "Stop Counting" : "Start Counting"}</button>
           <button className="setBtn" onClick={handleSetAll}>Set All</button>
           <button className="finishButton" onClick={handleFinish}>Finish</button>
           <button className="resetBtn" onClick={handleReset}>Reset</button>

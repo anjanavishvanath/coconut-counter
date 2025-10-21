@@ -6,9 +6,9 @@ load_dotenv()
 
 # ─── GPIO setup ─────────────────────────────────────────────────────
 # BCM pin numbers
-START_BUTTON_PIN = 22 #16
-STOP_BUTTON_PIN  = 16 #12
-CONVEYOR_RELAY_PIN = 17 #was 25 turned to Relay 4
+START_BUTTON_PIN = 16 #22
+STOP_BUTTON_PIN  = 12 #16
+CONVEYOR_RELAY_PIN = 25 #17 new Relay 4
 BUZZEER_PIN = 23 # Relay 3
 
 # ─── SMTP configuration ─────────────────────────────────────────────
