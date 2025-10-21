@@ -414,7 +414,7 @@ export default function App() {
                   window.close();
                 }
               }}
-              className="resetBtn">Close App</button>
+              className="resetBtn">Restart App</button>
             </div>
           </div>
         </div>

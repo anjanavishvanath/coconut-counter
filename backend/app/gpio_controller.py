@@ -5,17 +5,17 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..',
 # Modules for GPIO manipulation in Raspberry Pi 
 import RPi.GPIO as GPIO 
 import lgpio
-from .config import START_BUTTON_PIN, STOP_BUTTON_PIN, CONVEYOR_RELAY_PIN, BUZZEER_PIN
+from .config import START_BUTTON_PIN, STOP_BUTTON_PIN, CONVEYOR_RELAY_PIN, BUZZER_PIN
 
 class GPIOController:
     def __init__(self):
         self.chip = lgpio.gpiochip_open(0)  # Open the first GPIO chip
         # set outputs
         lgpio.gpio_claim_output(self.chip, CONVEYOR_RELAY_PIN)
-        lgpio.gpio_claim_output(self.chip, BUZZEER_PIN)
+        lgpio.gpio_claim_output(self.chip, BUZZER_PIN)
         #initialize outputs to low
         lgpio.gpio_write(self.chip, CONVEYOR_RELAY_PIN, 0)
-        lgpio.gpio_write(self.chip, BUZZEER_PIN, 0)
+        lgpio.gpio_write(self.chip, BUZZER_PIN, 0)
         # ─── RPi.GPIO setup for the button ────────────────────────────────────────
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(START_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -42,7 +42,7 @@ class GPIOController:
         if GPIO.input(START_BUTTON_PIN) == 0:
             if GPIO.input(START_BUTTON_PIN) == 0:
                 lgpio.gpio_write(self.chip, CONVEYOR_RELAY_PIN, 1)
-                lgpio.gpio_write(self.chip, BUZZEER_PIN, 0)  # turn off buzzer
+                lgpio.gpio_write(self.chip, BUZZER_PIN, 0)  # turn off buzzer
 
     def _on_stop_button_pressed(self, channel):
         print("Button pressed, stopping conveyor…")
@@ -60,11 +60,11 @@ class GPIOController:
 
     def activate_buzzer(self):
         """Activate the buzzer by setting the pin high."""
-        lgpio.gpio_write(self.chip, BUZZEER_PIN, 1)
+        lgpio.gpio_write(self.chip, BUZZER_PIN, 1)
 
     def deactivate_buzzer(self):
         """Deactivate the buzzer by setting the pin low."""
-        lgpio.gpio_write(self.chip, BUZZEER_PIN, 0)
+        lgpio.gpio_write(self.chip, BUZZER_PIN, 0)
 
     def cleanup(self):
         """Clean up GPIO settings."""

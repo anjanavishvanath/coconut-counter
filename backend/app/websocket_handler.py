@@ -240,7 +240,7 @@ async def ws_endpoint(websocket: WebSocket):
 
             # plain string commands for start/stop/reset/shutdown
             if cmd == "start":
-                ok = streamer.open(retries=3, delay=0.25)
+                ok = streamer.open(retries=5, delay=1)
                 if not ok:
                     await websocket.send_text(json.dumps({"type": "error", "code": "camera_not_found", "message": "Could not open camera"}))
                     continue
